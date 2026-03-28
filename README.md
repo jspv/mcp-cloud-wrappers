@@ -97,13 +97,13 @@ mcp-lambda-wrappers/
 │       ├── dcr/                         # Shared: RFC 7591 Dynamic Client Registration
 │       ├── oauth_callback/              # Shared: Generic OAuth2 callback (all providers)
 │       └── services/
-│           └── <your-service>/          # One directory per wrapped MCP service
-│               ├── handler.py           #   config: what to wrap, how to authenticate
-│               ├── service.env          #   non-secret config (committed)
-│               ├── tools.json           #   tool definitions (generated via gen-tools)
-│               ├── requirements.txt     #   MCP package + framework deps
-│               ├── service.local.env    #   (gitignored) local config overrides
-│               └── requirements.local.txt  # (gitignored) local dependency overrides
+│           └── <your-service>/              # One directory per wrapped MCP service
+│               ├── handler.py               #   config: what to wrap, how to authenticate
+│               ├── service.env              #   non-secret config (committed)
+│               ├── tools.json               #   tool definitions (generated via gen-tools)
+│               ├── requirements.txt.example #   dependency template (committed)
+│               ├── requirements.txt         #   (gitignored) actual deps with your paths
+│               └── service.local.env        #   (gitignored) local config overrides
 │
 ├── scripts/
 │   ├── gen_tools.py                     # Generate tools.json from MCP server
@@ -121,9 +121,11 @@ This section walks through the full process. The bundled `msgraph` wrapper is a 
 
 Your MCP server lives in its own repository, package registry, or wherever you keep it. It can be written in **any language** — the framework launches it as a subprocess and communicates over stdio.
 
-If your service uses per-user OAuth (e.g., accessing a user's mailbox or calendar), you need to make one small change **in your MCP server's source code** — specifically, in the module that obtains an access token for API calls. Before running its own auth flow, it should check for a token the framework has already placed in the environment. This lets the same server code work both locally (where it runs its own auth) and inside Lambda (where the framework manages auth).
+There are two things to adapt in your server for Lambda compatibility:
 
-Find the place in your MCP server that acquires an access token, and add an env var check at the top:
+#### a. Accept a framework-injected access token
+
+If your service uses per-user OAuth, find the place in your MCP server that acquires an access token and add an env var check at the top. This lets the same code work both locally (where it runs its own auth) and inside Lambda (where the framework manages auth):
 
 **Python** — in your MCP server's auth or HTTP client module:
 ```python
@@ -149,6 +151,30 @@ The env var name (`MY_SERVICE_ACCESS_TOKEN` above) is whatever you set as `acces
 
 If your service doesn't need per-user OAuth (just API keys), no code changes are needed — the framework injects API keys as env vars directly.
 
+#### b. Don't write to the Lambda filesystem
+
+AWS Lambda's `/var/task` directory is **read-only**. If your MCP server writes files at startup (token caches, SQLite databases, temp files), those writes will fail in Lambda.
+
+Guard any filesystem writes so they're skipped when the framework is managing auth:
+
+```python
+import os
+
+def _framework_managed():
+    """True when running inside the MCP Lambda wrapper framework."""
+    return bool(os.environ.get("MY_SERVICE_ACCESS_TOKEN") or os.environ.get("OAUTH_AUTH_URL"))
+
+# Before any file write:
+if not _framework_managed():
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    write_token_cache(...)
+```
+
+Common sources of filesystem writes to watch for:
+- **Token caches** (MSAL, google-auth, etc.) — skip cache reads/writes when framework-managed
+- **Session state files** — the framework handles state via DynamoDB/Secrets Manager
+- **SQLite databases** — if unavoidable, write to `/tmp` (the only writable path in Lambda)
+
 ### 2. Create the service directory
 
 Create a directory under `infra/lambda/services/<your-service>/` with these files:
@@ -157,9 +183,9 @@ Create a directory under `infra/lambda/services/<your-service>/` with these file
 infra/lambda/services/my-service/
 ├── handler.py              # what to wrap, how to authenticate
 ├── service.env             # non-secret config (committed)
-├── service.local.env       # local overrides (gitignored, optional)
-├── requirements.txt        # dependencies (committed)
-└── requirements.local.txt  # local dependency overrides (gitignored, optional)
+├── service.local.env       # local config overrides (gitignored, optional)
+├── requirements.txt.example # dependency template (committed)
+└── requirements.txt        # actual dependencies with your paths (gitignored)
 ```
 
 **`service.env`** — non-secret configuration for this service. These values are baked into the Lambda package at deploy time, so **edit this before deploying**:
@@ -227,25 +253,25 @@ config = ServiceConfig(
 )
 ```
 
-**`requirements.txt`** — tells the bundler what to install into the Lambda package. The framework deps are always needed; your MCP server is listed as a dependency:
+**`requirements.txt.example`** (committed) — a template showing the dependencies. Copy it to `requirements.txt` (gitignored) and fill in your package source:
 
 ```
+# Copy this file to requirements.txt and update paths.
+# requirements.txt is gitignored (contains local paths).
+
 # Framework dependencies (always required)
 mcp
 run-mcp-servers-with-aws-lambda
 boto3
 httpx
 
-# Your MCP server package — can be any pip-installable source:
-my-service-mcp                                                     # from PyPI
-# my-service-mcp @ git+https://github.com/you/my-service-mcp.git  # from a Git repo
-# my-service-mcp @ file:///path/to/local/checkout                  # from a local path
-
-# Note: mcp-wrapper-runtime is installed automatically by the bundler —
-# you don't need to list it here.
+# MCP server package — uncomment ONE of these:
+# my-service-mcp                                                     # from PyPI
+# my-service-mcp @ git+https://github.com/you/my-service-mcp.git    # from Git
+# my-service-mcp @ file:///path/to/local/checkout                    # from local path
 ```
 
-For local development, you can create a `requirements.local.txt` (gitignored) in the same directory with `file://` paths to local checkouts. The bundler uses it when present, falls back to `requirements.txt` otherwise.
+`mcp-wrapper-runtime` is installed automatically by the bundler — you don't need to list it.
 
 For **non-Python MCP servers**, you still need the framework deps in `requirements.txt` (the Lambda handler itself is Python). Bundle your server binary or Node modules into the Lambda package via the `handler_source_dir` — place them alongside `handler.py` and the bundler copies them in.
 
@@ -332,6 +358,14 @@ make verify
 ```
 
 The first `make` invocation automatically installs the CDK CLI as a local npm dependency — you don't need to install it globally.
+
+**macOS users**: Lambda requires Linux ARM64 binaries for compiled Python packages (pydantic, cryptography, etc.). The bundler automatically falls back to building inside a container. Set `CDK_DOCKER=podman` if you use Podman instead of Docker:
+
+```bash
+CDK_DOCKER=podman make deploy-service SERVICE=my-service
+```
+
+Or export it in your shell profile so you don't have to pass it every time.
 
 The Cognito user only needs to be created once. On first login via the hosted UI, you'll be prompted to set a permanent password.
 
@@ -506,17 +540,7 @@ def handler(event, context):
 
 ### MCP server package reference
 
-The `requirements.txt` pulls in the MCP server as a pip dependency:
-
-```
-mcp
-run-mcp-servers-with-aws-lambda
-boto3
-httpx
-msgraph-mcp                                           # from PyPI (or use file:// in requirements.local.txt)
-```
-
-For local development, create `requirements.local.txt` (gitignored) with the local path:
+Copy `requirements.txt.example` to `requirements.txt` (gitignored) and set the path to your local checkout:
 
 ```
 mcp
@@ -526,7 +550,7 @@ httpx
 msgraph-mcp @ file:///path/to/msgraph-email-calendar-mcp
 ```
 
-`mcp-wrapper-runtime` is installed automatically by the bundler in both cases.
+`mcp-wrapper-runtime` is installed automatically by the bundler.
 
 ## Using an external Cognito pool
 
