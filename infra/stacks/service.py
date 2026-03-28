@@ -37,6 +37,7 @@ class ServiceStack(Stack):
         lambda_timeout: int = 120,
         lambda_memory: int = 512,
         lambda_environment: dict[str, str] | None = None,
+        auth_setup_url: str = "",
         # Tool definitions (from tools.json) for the AgentCore GatewayTarget
         tool_definitions: list[dict] | None = None,
         # Extra IAM policies beyond the defaults
@@ -54,6 +55,8 @@ class ServiceStack(Stack):
             "OAUTH_STATE_TABLE": oauth_state_table_name,
             "OAUTH_CALLBACK_URL": oauth_callback_url,
         }
+        if auth_setup_url:
+            env_vars["AUTH_SETUP_URL"] = auth_setup_url
         if lambda_environment:
             env_vars.update(lambda_environment)
 
