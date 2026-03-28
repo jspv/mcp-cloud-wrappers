@@ -6,6 +6,8 @@ is handled by the framework.
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 
 
@@ -74,3 +76,41 @@ class ServiceConfig:
     # Lambda tuning
     lambda_timeout: int = 120
     lambda_memory: int = 512
+
+
+def load_oauth_json(directory: str | None = None) -> OAuthProviderConfig | None:
+    """Load ``oauth.json`` from the service directory and return an
+    ``OAuthProviderConfig``.
+
+    This is the single source of truth for OAuth provider configuration.
+    Both the CDK app (at synth time) and the Lambda handler (at runtime)
+    read from the same file.
+
+    *directory* defaults to the current working directory (``/var/task``
+    in Lambda, where the bundler copies the service files).
+    Returns ``None`` if ``oauth.json`` does not exist.
+    """
+    search_dirs = [directory] if directory else [os.getcwd(), "/var/task", "."]
+    oauth_path = None
+    for d in search_dirs:
+        candidate = os.path.join(d, "oauth.json")
+        if os.path.isfile(candidate):
+            oauth_path = candidate
+            break
+
+    if not oauth_path:
+        return None
+
+    with open(oauth_path) as f:
+        data = json.load(f)
+
+    return OAuthProviderConfig(
+        provider_name=data.get("provider_name", ""),
+        auth_endpoint=data.get("auth_endpoint", ""),
+        token_endpoint=data.get("token_endpoint", ""),
+        scopes=data.get("scopes", []),
+        client_id_env=data.get("client_id_key", ""),
+        client_secret_key=data.get("client_secret_key", ""),
+        endpoint_params=data.get("endpoint_params", {}),
+        uses_pkce=data.get("uses_pkce", True),
+    )
