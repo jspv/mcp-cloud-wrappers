@@ -7,6 +7,7 @@ as a stdio subprocess via the mcp_lambda adapter.
 from __future__ import annotations
 
 import os
+import re
 
 import aws_cdk as cdk
 from aws_cdk import (
@@ -17,6 +18,42 @@ from aws_cdk import (
 from constructs import Construct
 
 from .bundler import LocalPipBundler
+
+# mcp-wrapper-runtime lives at a known location relative to this file.
+_RUNTIME_PKG = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "packages", "mcp-wrapper-runtime")
+)
+
+
+def _docker_volumes(service_dir: str) -> list[cdk.DockerVolume]:
+    """Build Docker volume mounts for container bundling.
+
+    Mounts mcp-wrapper-runtime and any file:// paths from requirements.txt
+    so pip inside the container can resolve them.
+    """
+    volumes = [
+        cdk.DockerVolume(
+            host_path=_RUNTIME_PKG,
+            container_path="/mcp-wrapper-runtime",
+        ),
+    ]
+    # Find file:// paths in requirements.txt and mount them
+    req = os.path.join(service_dir, "requirements.txt")
+    if os.path.isfile(req):
+        with open(req) as f:
+            for line in f:
+                match = re.search(r"file://(/\S+)", line.strip())
+                if match:
+                    host_path = match.group(1)
+                    if os.path.isdir(host_path):
+                        # Mount at the same path so the file:// URI works as-is
+                        volumes.append(
+                            cdk.DockerVolume(
+                                host_path=host_path,
+                                container_path=host_path,
+                            )
+                        )
+    return volumes
 
 
 class McpServerLambda(Construct):
@@ -64,9 +101,16 @@ class McpServerLambda(Construct):
                 bundling=cdk.BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_12.bundling_image,
                     local=LocalPipBundler(handler_source_dir),
+                    # Docker/Podman fallback for compiled dependencies.
+                    # Mounts mcp-wrapper-runtime and any file:// paths
+                    # from requirements.txt at their original paths so
+                    # pip resolves them identically inside the container.
+                    volumes=_docker_volumes(handler_source_dir),
                     command=[
                         "bash", "-c",
-                        "pip install -r requirements.txt -t /asset-output && cp -au . /asset-output",
+                        "pip install /mcp-wrapper-runtime -t /asset-output && "
+                        "pip install -r requirements.txt -t /asset-output && "
+                        "cp -au . /asset-output",
                     ],
                 ),
             ),

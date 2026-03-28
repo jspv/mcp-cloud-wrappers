@@ -51,6 +51,14 @@ class LocalPipBundler:
 
     def try_bundle(self, output_dir: str, options) -> bool:  # type: ignore[override]
         req = os.path.join(self._source_dir, "requirements.txt")
+
+        # On non-Linux hosts, always fall back to Docker/Podman so
+        # compiled C extensions get the correct Linux ARM64 binaries.
+        import platform
+
+        if platform.system() != "Linux":
+            return False
+
         try:
             # Install mcp-wrapper-runtime from this repo automatically.
             if os.path.isdir(_RUNTIME_PKG):
