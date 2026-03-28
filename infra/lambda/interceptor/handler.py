@@ -18,6 +18,8 @@ import sys
 
 def handler(event, context):
     """Intercept gateway request and inject Cognito sub."""
+    # Diagnostic logging — remove once stable
+    print(f"[interceptor] invoked", file=sys.stderr)
     try:
         mcp = event.get("mcp", {})
         request = mcp.get("gatewayRequest", {})
@@ -36,6 +38,8 @@ def handler(event, context):
                 payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
                 payload = json.loads(base64.urlsafe_b64decode(payload_b64))
                 cognito_sub = payload.get("sub")
+
+        print(f"[interceptor] cognito_sub={cognito_sub}", file=sys.stderr)
 
         # Inject into params.arguments so the target Lambda receives it
         # as part of the tool arguments (event dict).

@@ -99,6 +99,13 @@ class McpServiceHandler:
 
         env_vars = self._build_subprocess_env(user_id)
 
+        # Diagnostic logging — remove once stable
+        print(f"[mcp-wrapper] user_id={user_id} "
+              f"OAUTH_AUTHENTICATED={env_vars.get('OAUTH_AUTHENTICATED')} "
+              f"has_token={bool(env_vars.get(self.config.access_token_env_var or ''))} "
+              f"AUTH_SETUP_URL={bool(env_vars.get('AUTH_SETUP_URL'))}",
+              file=sys.stderr)
+
         # Lazy imports — keeps cold start fast when health-checking
         from mcp.client.stdio import StdioServerParameters
         from mcp_lambda import (
@@ -236,7 +243,10 @@ class McpServiceHandler:
         oauth = self.config.oauth
         refresh_token = creds.get("refresh_token")
         if not refresh_token or not oauth:
+            print(f"[mcp-wrapper] Cannot refresh: refresh_token={'present' if refresh_token else 'empty'} "
+                  f"oauth={'configured' if oauth else 'none'}", file=sys.stderr)
             return None
+        print(f"[mcp-wrapper] Attempting token refresh...", file=sys.stderr)
 
         try:
             # client_id and client_secret may come from Lambda env vars

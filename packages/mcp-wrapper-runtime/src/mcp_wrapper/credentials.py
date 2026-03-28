@@ -57,10 +57,19 @@ class CredentialManager:
         authenticated yet.
         """
         secret_name = f"{self._prefix}-{service_name}-user-{user_id}"
+        print(f"[mcp-wrapper] Loading user credentials: {secret_name}", file=sys.stderr)
         try:
             resp = self._secrets.get_secret_value(SecretId=secret_name)
-            return json.loads(resp.get("SecretString", "{}"))
+            creds = json.loads(resp.get("SecretString", "{}"))
+            has_access = bool(creds.get("access_token"))
+            has_refresh = bool(creds.get("refresh_token"))
+            expires_at = creds.get("expires_at", 0)
+            print(f"[mcp-wrapper] Credentials found: has_access={has_access} "
+                  f"has_refresh={has_refresh} expires_at={expires_at}",
+                  file=sys.stderr)
+            return creds
         except self._secrets.exceptions.ResourceNotFoundException:
+            print(f"[mcp-wrapper] No credentials found for {secret_name}", file=sys.stderr)
             return None
         except Exception as exc:
             print(

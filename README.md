@@ -767,6 +767,13 @@ The interceptor response **must** include `"interceptorOutputVersion": "1.0"` at
 
 See [Secrets and security](#secrets-and-security) for naming conventions, IAM scoping, and deployment ordering.
 
+### Diagnostic logging
+
+**TODO: Remove before production.** The interceptor, handler, and credential manager currently emit `[interceptor]` and `[mcp-wrapper]` log lines to stderr (CloudWatch) for debugging the identity propagation and credential loading flow. These should be removed or gated behind a `LOG_LEVEL` env var once field testing is complete. Files with diagnostic logging:
+- `infra/lambda/interceptor/handler.py`
+- `packages/mcp-wrapper-runtime/src/mcp_wrapper/handler.py`
+- `packages/mcp-wrapper-runtime/src/mcp_wrapper/credentials.py`
+
 ### CDK construct composition
 
 ```
