@@ -34,12 +34,11 @@ def _find_mcp_module(service_dir: str) -> str:
 
 
 def _find_mcp_pkg_dir(service_dir: str) -> str | None:
-    """Find the MCP server package directory from requirements files.
+    """Find the MCP server package directory from requirements.txt.
 
-    Looks for a ``file://`` path in requirements.local.txt first, then
-    requirements.txt.  Returns the local path or None.
+    Looks for a ``file://`` path.  Returns the local path or None.
     """
-    for filename in ("requirements.local.txt", "requirements.txt"):
+    for filename in ("requirements.txt",):
         req_path = os.path.join(service_dir, filename)
         if not os.path.isfile(req_path):
             continue

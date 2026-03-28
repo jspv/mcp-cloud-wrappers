@@ -6,6 +6,9 @@ PREFIX ?= mcp-wrappers
 # Users never need to invoke it directly — use make targets instead.
 CDK = ./node_modules/.bin/cdk
 
+# Use podman if docker is not available.
+export CDK_DOCKER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+
 node_modules/.bin/cdk:
 	npm install --save-dev aws-cdk
 

@@ -1,0 +1,13 @@
+# Copy this file to requirements.txt and update paths.
+# requirements.txt is gitignored (contains local paths).
+
+# Framework dependencies (always required)
+mcp
+run-mcp-servers-with-aws-lambda
+boto3
+httpx
+
+# MCP server package — uncomment ONE of these:
+# msgraph-mcp                                                         # from PyPI
+# msgraph-mcp @ git+https://github.com/yourorg/msgraph-mcp.git       # from Git
+# msgraph-mcp @ file:///absolute/path/to/local/checkout               # from local path

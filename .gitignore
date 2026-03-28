@@ -16,8 +16,8 @@ cdk.out/
 .env
 *.pem
 
-# Local overrides (contain absolute paths or dev-specific config)
-requirements.local.txt
+# Per-service files that contain local paths (use .example as template)
+infra/lambda/services/*/requirements.txt
 service.local.env
 
 # OS
@@ -28,3 +28,4 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+.cache/

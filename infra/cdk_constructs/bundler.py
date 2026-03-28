@@ -1,12 +1,12 @@
 """Local pip/uv bundler for Lambda deployment packages.
 
-Installs requirements.txt (or requirements.local.txt if present) into
-the CDK output directory using uv (preferred) or pip, then copies source
-files.  The ``mcp-wrapper-runtime`` package is always installed
-automatically from this repo — it does not need to appear in
-requirements.txt.
+Installs requirements.txt into the CDK output directory using uv
+(preferred) or pip, then copies source files.  The ``mcp-wrapper-runtime``
+package is always installed automatically from this repo.
 
-Falls back to Docker bundling if the local install fails.
+On non-Linux hosts, compiled C extensions may be for the wrong platform.
+CDK falls back to Docker/Podman bundling automatically when the local
+bundler returns False.  Set ``CDK_DOCKER=podman`` if using Podman.
 """
 
 from __future__ import annotations
@@ -50,12 +50,7 @@ class LocalPipBundler:
             )
 
     def try_bundle(self, output_dir: str, options) -> bool:  # type: ignore[override]
-        # Use requirements.local.txt if it exists (gitignored, for local
-        # file:// paths), otherwise fall back to requirements.txt.
-        req_local = os.path.join(self._source_dir, "requirements.local.txt")
-        req = req_local if os.path.exists(req_local) else os.path.join(
-            self._source_dir, "requirements.txt"
-        )
+        req = os.path.join(self._source_dir, "requirements.txt")
         try:
             # Install mcp-wrapper-runtime from this repo automatically.
             if os.path.isdir(_RUNTIME_PKG):
