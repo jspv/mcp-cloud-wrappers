@@ -97,13 +97,17 @@ mcp-lambda-wrappers/
 │       ├── dcr/                         # Shared: RFC 7591 Dynamic Client Registration
 │       ├── oauth_callback/              # Shared: Generic OAuth2 callback (all providers)
 │       └── services/
-│           └── msgraph/                 # Example: Microsoft Graph wrapper
+│           └── <your-service>/          # One directory per wrapped MCP service
 │               ├── handler.py           #   config: what to wrap, how to authenticate
-│               ├── service.env          #   non-secret config (tenant ID, etc.)
+│               ├── service.env          #   non-secret config (committed)
+│               ├── tools.json           #   tool definitions (generated via gen-tools)
 │               ├── requirements.txt     #   MCP package + framework deps
-│               └── requirements.local.txt  # (gitignored) local file:// overrides
+│               ├── service.local.env    #   (gitignored) local config overrides
+│               └── requirements.local.txt  # (gitignored) local dependency overrides
 │
-├── scripts/verify_deployment.py         # Post-deploy smoke test
+├── scripts/
+│   ├── gen_tools.py                     # Generate tools.json from MCP server
+│   └── verify_deployment.py             # Post-deploy smoke test
 ├── cdk.json
 ├── Makefile
 └── pyproject.toml
@@ -197,7 +201,7 @@ def handler(event, context):
     return _handler.handle(event, context)
 ```
 
-`passthrough_env_vars` names which values from `service.env` to forward to the subprocess. Credentials belong in the service secret (see step 4).
+`passthrough_env_vars` names which values from `service.env` to forward to the subprocess. Credentials belong in the service secret (see step 3).
 
 For a **non-Python MCP server**, use `command` and `args` instead of `mcp_module`:
 
@@ -316,7 +320,7 @@ aws cognito-idp admin-create-user \
   --temporary-password 'TempPass123!'
 
 # Deploy a specific service
-make deploy-service SERVICE=msgraph
+make deploy-service SERVICE=my-service
 
 # Deploy all services
 make deploy-all
@@ -378,17 +382,17 @@ Both types of secrets can be created at any time — before or after deploying t
 Each service Lambda's IAM role is scoped to only its own secrets. The policy restricts access to `{prefix}-{service}-*`:
 
 ```
-# The msgraph Lambda can access:
-  mcp-wrappers-msgraph-service-secrets       ✓
-  mcp-wrappers-msgraph-user-abc123           ✓
+# The service-a Lambda can access:
+  mcp-wrappers-service-a-service-secrets     ✓
+  mcp-wrappers-service-a-user-abc123         ✓
 
 # It CANNOT access:
-  mcp-wrappers-gcal-service-secrets          ✗  (different service)
+  mcp-wrappers-service-b-service-secrets     ✗  (different service)
   my-database-password                       ✗  (no prefix match)
   production-api-key                         ✗  (no prefix match)
 ```
 
-Services are isolated from each other. The msgraph Lambda cannot read Google Calendar's secrets, and neither can read anything else in your account. The same scoping applies to the OAuth callback Lambda (restricted to `{prefix}-*`).
+Services are isolated from each other. Each Lambda can only read secrets matching its own `{prefix}-{service}-*` pattern. The same scoping applies to the OAuth callback Lambda (restricted to `{prefix}-*`).
 
 The Lambda also has `CreateSecret` permission within its scope — this is needed because new user credential secrets are created on the fly when a user completes OAuth for the first time (you don't know Cognito user IDs in advance).
 
@@ -405,14 +409,14 @@ Deploy shared stack ──► Get OAuthCallbackUrl ──► Register URL with O
 Create service secret ──────────────────┘ (before first tool invocation)
 ```
 
-In practice: deploy both stacks first (`make deploy-all`), then handle the two manual steps (create secret + register callback URL) before first use. CDK resolves the inter-stack dependency automatically.
+In practice: set up `service.env`, service secrets, and `tools.json` first (step 3), then deploy (step 4), then register the OAuth callback URL (step 5). CDK resolves inter-stack dependencies automatically.
 
 ## How the OAuth flow works
 
 When a user first interacts with a service that requires OAuth:
 
 ```
-1. Agent calls a tool (e.g., list_messages)
+1. Agent calls a tool
    └─ Handler finds no credentials for this user
    └─ Builds OAuth authorization URL (PKCE + state stored in DynamoDB)
    └─ Injects OAUTH_AUTH_URL env var, launches subprocess
@@ -444,10 +448,10 @@ Token refresh is transparent — the handler checks expiry on every invocation a
 
 The `infra/lambda/services/msgraph/` directory wraps an MCP server for Outlook mail and calendar (msgraph-email-calendar-mcp). It demonstrates the full pattern:
 
-### Deploy
+### Setup and deploy
 
 ```bash
-# 1. Edit service.env with your tenant ID (before deploying)
+# 1. Edit service.env with your tenant ID
 #    infra/lambda/services/msgraph/service.env:
 #    MICROSOFT_TENANT_ID=your-tenant-id
 
@@ -456,10 +460,13 @@ aws secretsmanager create-secret \
   --name mcp-wrappers-msgraph-service-secrets \
   --secret-string '{"MICROSOFT_CLIENT_ID": "your-azure-client-id"}'
 
-# 3. Deploy
+# 3. Generate tools.json from the MCP server
+make gen-tools SERVICE=msgraph MCP_PKG_DIR=/path/to/msgraph-email-calendar-mcp
+
+# 4. Deploy
 make deploy-all
 
-# 4. Register the OAuthCallbackUrl (from deploy output) in your Azure App Registration
+# 5. Register the OAuthCallbackUrl (from deploy output) in your Azure App Registration
 #    under Authentication > Web > Redirect URIs
 ```
 
@@ -521,10 +528,10 @@ msgraph-mcp @ file:///path/to/msgraph-email-calendar-mcp
 
 ## Using an external Cognito pool
 
-If you already have a Cognito User Pool (e.g., from another project like glidepath), pass its details to `SharedInfraStack` to skip creating a new one:
+If you already have a Cognito User Pool (e.g., from another project), you can reuse it instead of creating a new one. This requires editing `infra/app.py` — the only case where that file needs modification:
 
 ```python
-# infra/app.py
+# infra/app.py — pass external pool details to SharedInfraStack
 shared = SharedInfraStack(
     app, f"{prefix}-shared", env=env,
     external_user_pool_id="us-east-1_xxxxxx",
