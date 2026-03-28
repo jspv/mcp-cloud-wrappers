@@ -4,9 +4,13 @@ Creates:
 - IAM role for AgentCore to invoke the MCP Lambda
 - CfnGateway with CUSTOM_JWT authorizer
 - CfnGatewayTarget pointing at the Lambda
+
+Tool definitions are read from ``tools.json`` in the service directory.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from aws_cdk import (
     CfnOutput,
@@ -15,6 +19,27 @@ from aws_cdk import (
     aws_lambda as lambda_,
 )
 from constructs import Construct
+
+
+def _build_tool_definitions(
+    tools: list[dict[str, Any]],
+) -> list[ac.CfnGatewayTarget.ToolDefinitionProperty]:
+    """Convert a list of tool dicts (from tools.json) to CDK properties."""
+    definitions = []
+    for tool in tools:
+        schema = tool.get("inputSchema", {"type": "object", "properties": {}})
+        definitions.append(
+            ac.CfnGatewayTarget.ToolDefinitionProperty(
+                name=tool["name"],
+                description=tool.get("description", ""),
+                input_schema=ac.CfnGatewayTarget.SchemaDefinitionProperty(
+                    type=schema.get("type", "object"),
+                    properties=schema.get("properties", {}),
+                    required=schema.get("required", []),
+                ),
+            )
+        )
+    return definitions
 
 
 class McpAgentCoreGateway(Construct):
@@ -29,6 +54,7 @@ class McpAgentCoreGateway(Construct):
         service_name: str,
         lambda_function: lambda_.Function,
         discovery_url: str,
+        tool_definitions: list[dict[str, Any]] | None = None,
         mcp_versions: list[str] | None = None,
         allowed_scopes: list[str] | None = None,
     ) -> None:
@@ -36,6 +62,11 @@ class McpAgentCoreGateway(Construct):
 
         versions = mcp_versions or ["2025-03-26"]
         scopes = allowed_scopes or [f"{prefix}/read", f"{prefix}/write"]
+
+        # Fall back to a ping tool if no definitions provided.
+        tools = tool_definitions or [
+            {"name": "ping", "description": "Health check."}
+        ]
 
         # ---- Gateway execution role ----
         gateway_role = iam.Role(
@@ -85,20 +116,7 @@ class McpAgentCoreGateway(Construct):
                     lambda_=ac.CfnGatewayTarget.McpLambdaTargetConfigurationProperty(
                         lambda_arn=lambda_function.function_arn,
                         tool_schema=ac.CfnGatewayTarget.ToolSchemaProperty(
-                            inline_payload=[
-                                ac.CfnGatewayTarget.ToolDefinitionProperty(
-                                    name="ping",
-                                    description=(
-                                        "Health check — returns ok when the "
-                                        "MCP server is running."
-                                    ),
-                                    input_schema=ac.CfnGatewayTarget.SchemaDefinitionProperty(
-                                        type="object",
-                                        properties={},
-                                        required=[],
-                                    ),
-                                )
-                            ]
+                            inline_payload=_build_tool_definitions(tools),
                         ),
                     )
                 )

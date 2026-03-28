@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -69,11 +70,19 @@ def _discover_services() -> list[dict]:
             env_file = os.path.join(service_dir, "service.env")
         env_values = _parse_env_file(env_file)
 
+        # Load tool definitions from tools.json if present.
+        tools_file = os.path.join(service_dir, "tools.json")
+        tools = None
+        if os.path.isfile(tools_file):
+            with open(tools_file) as f:
+                tools = json.load(f)
+
         services.append({
             "name": name,
             "dir": service_dir,
             "timeout": int(env_values.pop("LAMBDA_TIMEOUT", "120")),
             "memory": int(env_values.pop("LAMBDA_MEMORY", "512")),
+            "tools": tools,
         })
     return services
 
@@ -108,6 +117,7 @@ for svc in _discover_services():
         oauth_state_table_name=shared.oauth_state_table.table_name,
         lambda_timeout=svc["timeout"],
         lambda_memory=svc["memory"],
+        tool_definitions=svc["tools"],
         lambda_environment={
             "SERVICE_SECRET_NAME": f"{prefix}-{svc['name']}-service-secrets",
         },

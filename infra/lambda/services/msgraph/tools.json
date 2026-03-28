@@ -1,0 +1,161 @@
+[
+  {
+    "name": "auth_status",
+    "description": "Show current Microsoft auth configuration and status."
+  },
+  {
+    "name": "start_auth",
+    "description": "Start Microsoft authentication. Returns an OAuth URL to open in your browser."
+  },
+  {
+    "name": "finish_auth",
+    "description": "Complete Microsoft authentication after user approval."
+  },
+  {
+    "name": "list_accounts",
+    "description": "List authenticated Microsoft accounts."
+  },
+  {
+    "name": "list_folders",
+    "description": "List available mail folders for the authenticated account.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "account_id": {"type": "string"},
+        "include_hidden": {"type": "boolean"}
+      }
+    }
+  },
+  {
+    "name": "list_messages",
+    "description": "List recent mail messages from a folder.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "account_id": {"type": "string"},
+        "folder": {"type": "string"},
+        "limit": {"type": "integer"}
+      }
+    }
+  },
+  {
+    "name": "get_message",
+    "description": "Get a full read-only view of a specific mail message.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "message_id": {"type": "string"},
+        "account_id": {"type": "string"}
+      },
+      "required": ["message_id"]
+    }
+  },
+  {
+    "name": "mark_message_read",
+    "description": "Mark a message as read or unread.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "message_id": {"type": "string"},
+        "account_id": {"type": "string"},
+        "is_read": {"type": "boolean"}
+      },
+      "required": ["message_id"]
+    }
+  },
+  {
+    "name": "move_message",
+    "description": "Move a message to another folder.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "message_id": {"type": "string"},
+        "destination": {"type": "string"},
+        "account_id": {"type": "string"}
+      },
+      "required": ["message_id", "destination"]
+    }
+  },
+  {
+    "name": "delete_message",
+    "description": "Delete a message or move it to Deleted Items.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "message_id": {"type": "string"},
+        "account_id": {"type": "string"},
+        "permanent": {"type": "boolean"}
+      },
+      "required": ["message_id"]
+    }
+  },
+  {
+    "name": "search_messages",
+    "description": "Search messages using Microsoft Graph message search.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string"},
+        "account_id": {"type": "string"},
+        "limit": {"type": "integer"}
+      },
+      "required": ["query"]
+    }
+  },
+  {
+    "name": "bulk_manage_messages",
+    "description": "Bulk-manage messages with filtering. Supports dry-run, delete, move, and mark-read actions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "account_id": {"type": "string"},
+        "folder": {"type": "string"},
+        "sender_contains": {"type": "string"},
+        "subject_contains": {"type": "string"},
+        "received_after": {"type": "string"},
+        "unread_only": {"type": "boolean"},
+        "action": {"type": "string"},
+        "destination": {"type": "string"},
+        "limit": {"type": "integer"},
+        "max_passes": {"type": "integer"},
+        "dry_run": {"type": "boolean"}
+      }
+    }
+  },
+  {
+    "name": "list_calendars",
+    "description": "List readable calendars for the authenticated account.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "account_id": {"type": "string"}
+      }
+    }
+  },
+  {
+    "name": "list_events",
+    "description": "List events from the default or specified calendar in a time range.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "account_id": {"type": "string"},
+        "start_iso": {"type": "string"},
+        "end_iso": {"type": "string"},
+        "calendar_id": {"type": "string"},
+        "limit": {"type": "integer"}
+      }
+    }
+  },
+  {
+    "name": "get_event",
+    "description": "Get full details for a specific calendar event.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "event_id": {"type": "string"},
+        "account_id": {"type": "string"}
+      },
+      "required": ["event_id"]
+    }
+  }
+]

@@ -37,6 +37,8 @@ class ServiceStack(Stack):
         lambda_timeout: int = 120,
         lambda_memory: int = 512,
         lambda_environment: dict[str, str] | None = None,
+        # Tool definitions (from tools.json) for the AgentCore GatewayTarget
+        tool_definitions: list[dict] | None = None,
         # Extra IAM policies beyond the defaults
         extra_policies: list[iam.PolicyStatement] | None = None,
         **kwargs,
@@ -106,6 +108,7 @@ class ServiceStack(Stack):
             service_name=service_name,
             lambda_function=mcp_lambda.function,
             discovery_url=discovery_url,
+            tool_definitions=tool_definitions,
         )
 
         # ---- Outputs ----
