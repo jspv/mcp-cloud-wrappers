@@ -9,5 +9,3 @@ msgraph-mcp                                                         # from PyPI
 # msgraph-mcp @ git+https://github.com/yourorg/msgraph-mcp.git     # from Git
 # msgraph-mcp @ file:///absolute/path/to/local/checkout             # from local path
 
-# Note: mcp-wrapper-runtime is installed automatically by the bundler
-# from this repo — you don't need to list it here.

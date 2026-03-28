@@ -30,10 +30,12 @@ class McpAgentCoreGateway(Construct):
         lambda_function: lambda_.Function,
         discovery_url: str,
         mcp_versions: list[str] | None = None,
+        allowed_scopes: list[str] | None = None,
     ) -> None:
         super().__init__(scope, construct_id)
 
-        versions = mcp_versions or ["2024-11-05"]
+        versions = mcp_versions or ["2025-03-26"]
+        scopes = allowed_scopes or [f"{prefix}/read", f"{prefix}/write"]
 
         # ---- Gateway execution role ----
         gateway_role = iam.Role(
@@ -57,6 +59,7 @@ class McpAgentCoreGateway(Construct):
             authorizer_configuration=ac.CfnGateway.AuthorizerConfigurationProperty(
                 custom_jwt_authorizer=ac.CfnGateway.CustomJWTAuthorizerConfigurationProperty(
                     discovery_url=discovery_url,
+                    allowed_scopes=scopes,
                 ),
             ),
             protocol_configuration=ac.CfnGateway.GatewayProtocolConfigurationProperty(
@@ -72,6 +75,11 @@ class McpAgentCoreGateway(Construct):
             "McpGatewayTarget",
             name=f"{prefix}-{service_name}-target",
             gateway_identifier=gateway.attr_gateway_identifier,
+            credential_provider_configurations=[
+                ac.CfnGatewayTarget.CredentialProviderConfigurationProperty(
+                    credential_provider_type="GATEWAY_IAM_ROLE",
+                )
+            ],
             target_configuration=ac.CfnGatewayTarget.TargetConfigurationProperty(
                 mcp=ac.CfnGatewayTarget.McpTargetConfigurationProperty(
                     lambda_=ac.CfnGatewayTarget.McpLambdaTargetConfigurationProperty(
