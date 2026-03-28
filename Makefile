@@ -28,7 +28,7 @@ deploy-all: node_modules/.bin/cdk
 	$(CDK) deploy --all
 
 gen-tools:
-	uv run python scripts/gen_tools.py $(SERVICE) $(MCP_PKG_DIR)
+	uv run python scripts/gen_tools.py $(SERVICE)
 
 verify:
 	uv run python scripts/verify_deployment.py

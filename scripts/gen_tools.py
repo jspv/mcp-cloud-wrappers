@@ -2,11 +2,11 @@
 """Generate tools.json for a service by introspecting its MCP server.
 
 Usage:
-  make gen-tools SERVICE=msgraph MCP_PKG_DIR=/path/to/msgraph-email-calendar-mcp
+  make gen-tools SERVICE=msgraph
 
-Runs `uv run` inside the MCP server's project directory to introspect
-its FastMCP tools, then writes tools.json to the service directory in
-this repo.
+Finds the MCP server package location from requirements.local.txt (or
+requirements.txt), runs `uv run` inside that project to introspect its
+FastMCP tools, and writes tools.json to the service directory.
 
 For non-Python MCP servers, tools.json must be maintained manually.
 """
@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 
 def _find_mcp_module(service_dir: str) -> str:
@@ -30,6 +31,33 @@ def _find_mcp_module(service_dir: str) -> str:
         print(f"Error: could not find mcp_module in {handler_path}", file=sys.stderr)
         sys.exit(1)
     return match.group(1)
+
+
+def _find_mcp_pkg_dir(service_dir: str) -> str | None:
+    """Find the MCP server package directory from requirements files.
+
+    Looks for a ``file://`` path in requirements.local.txt first, then
+    requirements.txt.  Returns the local path or None.
+    """
+    for filename in ("requirements.local.txt", "requirements.txt"):
+        req_path = os.path.join(service_dir, filename)
+        if not os.path.isfile(req_path):
+            continue
+        with open(req_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # Match: package-name @ file:///path/to/dir
+                match = re.search(r"@\s*file://(/\S+)", line)
+                if match:
+                    path = match.group(1)
+                    # Skip the framework runtime package
+                    if "mcp-wrapper-runtime" in path:
+                        continue
+                    if os.path.isdir(path):
+                        return path
+    return None
 
 
 _INTROSPECT_SCRIPT = '''
@@ -84,14 +112,10 @@ asyncio.run(dump(sys.argv[1]))
 
 def main():
     if len(sys.argv) < 2:
-        print(
-            "Usage: make gen-tools SERVICE=<name> MCP_PKG_DIR=/path/to/mcp-server-repo",
-            file=sys.stderr,
-        )
+        print("Usage: make gen-tools SERVICE=<name>", file=sys.stderr)
         sys.exit(1)
 
     service_name = sys.argv[1]
-    mcp_pkg_dir = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("MCP_PKG_DIR", "")
 
     services_dir = os.path.join(
         os.path.dirname(__file__), "..", "infra", "lambda", "services"
@@ -104,16 +128,25 @@ def main():
 
     mcp_module = _find_mcp_module(service_dir)
 
+    # Find MCP server package directory from requirements files,
+    # or accept it as a CLI arg / env var override.
+    mcp_pkg_dir = (
+        (sys.argv[2] if len(sys.argv) > 2 else None)
+        or os.environ.get("MCP_PKG_DIR")
+        or _find_mcp_pkg_dir(service_dir)
+    )
+
     if not mcp_pkg_dir:
         print(
-            f"Error: MCP_PKG_DIR not set. Point it at the MCP server's project directory.\n"
+            f"Error: could not find MCP server package location.\n"
+            f"Either add a file:// path in requirements.local.txt, or pass it:\n"
             f"  make gen-tools SERVICE={service_name} MCP_PKG_DIR=/path/to/repo",
             file=sys.stderr,
         )
         sys.exit(1)
 
     if not os.path.isdir(mcp_pkg_dir):
-        print(f"Error: MCP_PKG_DIR not found: {mcp_pkg_dir}", file=sys.stderr)
+        print(f"Error: MCP package directory not found: {mcp_pkg_dir}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Introspecting {mcp_module} from {mcp_pkg_dir}...")
