@@ -22,14 +22,7 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "include_hidden": {
@@ -46,14 +39,7 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "folder": {
@@ -77,14 +63,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         }
       },
@@ -103,14 +82,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "is_read": {
@@ -136,14 +108,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         }
       },
@@ -163,14 +128,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "permanent": {
@@ -193,14 +151,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "limit": {
@@ -220,14 +171,7 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "folder": {
@@ -235,36 +179,15 @@
           "type": "string"
         },
         "sender_contains": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "subject_contains": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "received_after": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "unread_only": {
@@ -276,14 +199,7 @@
           "type": "string"
         },
         "destination": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "limit": {
@@ -308,14 +224,7 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         }
       }
@@ -328,47 +237,19 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "start_iso": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "end_iso": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "calendar_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         },
         "limit": {
@@ -388,14 +269,7 @@
           "type": "string"
         },
         "account_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "type": "string",
           "default": null
         }
       },

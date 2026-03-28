@@ -74,6 +74,28 @@ def find_fastmcp(mod):
             return obj
     return None
 
+def simplify_prop(prop):
+    """Simplify a JSON Schema property for CDK compatibility.
+
+    CDK SchemaDefinitionProperty requires a flat {"type": "..."} for each
+    property.  FastMCP generates anyOf unions for Optional types like
+    {"anyOf": [{"type": "string"}, {"type": "null"}]}.  We flatten these
+    to the first non-null type.
+    """
+    if "anyOf" in prop:
+        for variant in prop["anyOf"]:
+            if variant.get("type") != "null":
+                simple = {"type": variant["type"]}
+                if "default" in prop:
+                    simple["default"] = prop["default"]
+                return simple
+    if "type" not in prop:
+        return {"type": "string"}
+    return prop
+
+def simplify_properties(properties):
+    return {k: simplify_prop(v) for k, v in properties.items()}
+
 async def dump(module_name):
     parent = module_name.rsplit(".", 1)[0] if "." in module_name else module_name
     fastmcp = None
@@ -98,7 +120,7 @@ async def dump(module_name):
         if schema and schema.get("properties"):
             entry["inputSchema"] = {
                 "type": schema.get("type", "object"),
-                "properties": schema.get("properties", {}),
+                "properties": simplify_properties(schema["properties"]),
             }
             req = schema.get("required", [])
             if req:
