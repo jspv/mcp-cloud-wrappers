@@ -16,8 +16,9 @@ cdk.out/
 .env
 *.pem
 
-# Local dependency overrides (contain absolute paths)
+# Local overrides (contain absolute paths or dev-specific config)
 requirements.local.txt
+service.local.env
 
 # OS
 .DS_Store

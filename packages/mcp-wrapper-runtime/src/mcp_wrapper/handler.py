@@ -23,13 +23,20 @@ from .oauth import OAuthHelper
 def _load_service_env() -> None:
     """Load ``service.env`` from the Lambda package into ``os.environ``.
 
-    The bundler copies service.env alongside handler.py.  We load it
-    once at module import time so the values are available both to the
-    handler (e.g. for OAuth URL building) and to the subprocess.
+    Uses ``service.local.env`` if present (gitignored, for local dev
+    overrides), otherwise falls back to ``service.env``.
+
+    The bundler copies these files alongside handler.py.  We load once
+    at module import time so the values are available both to the handler
+    (e.g. for OAuth URL building) and to the subprocess.
     """
     # In Lambda, the working directory is /var/task (where the bundle lives).
-    # service.env is also copied next to handler.py in the bundle root.
-    for candidate in ("service.env", "/var/task/service.env"):
+    # Try local override first, then committed file.
+    candidates = [
+        "service.local.env", "/var/task/service.local.env",
+        "service.env", "/var/task/service.env",
+    ]
+    for candidate in candidates:
         if os.path.isfile(candidate):
             with open(candidate) as f:
                 for line in f:
