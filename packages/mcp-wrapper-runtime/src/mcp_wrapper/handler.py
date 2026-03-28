@@ -202,6 +202,10 @@ class McpServiceHandler:
         # needs the client_secret which may come from service secrets)
         if self.config.oauth and self.config.access_token_env_var and user_id:
             self._inject_oauth_credentials(env, user_id)
+        elif self.config.oauth:
+            # No user_id available — still mark as framework-managed so
+            # the subprocess doesn't try to write token caches to disk.
+            env["OAUTH_AUTHENTICATED"] = "false"
 
         # Framework metadata
         env["SERVICE_NAME"] = self.config.service_name
