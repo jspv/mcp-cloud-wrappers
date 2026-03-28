@@ -308,21 +308,35 @@ def _render_service_page(cognito_sub, email, connected=None, session_token=""):
         display = cfg.get("display_name", name)
         secret_name = f"{SECRET_PREFIX}-{name}-user-{cognito_sub}"
         is_connected = False
+        is_expired = False
         try:
-            secrets_client.get_secret_value(SecretId=secret_name)
-            is_connected = True
+            sec_resp = secrets_client.get_secret_value(SecretId=secret_name)
+            cred_data = json.loads(sec_resp.get("SecretString", "{}"))
+            if cred_data.get("access_token"):
+                is_connected = True
+                # Check if expired
+                exp = cred_data.get("expires_at", 0)
+                if exp and time.time() > exp:
+                    is_expired = True
+                    is_connected = False
         except Exception:
             pass
 
         just_connected = (connected == name)
-        if is_connected or just_connected:
+        base = AUTH_SETUP_URL.rsplit("/auth/setup", 1)[0] if AUTH_SETUP_URL else ""
+        connect_url = f"{base}/auth/connect/{name}?session={session_token}"
+
+        if just_connected:
             status_html = '<span class="status connected">Connected</span>'
             button_html = ""
+        elif is_expired:
+            status_html = '<span class="status disconnected">Expired</span>'
+            button_html = f'<a href="{connect_url}" class="btn">Reconnect</a>'
+        elif is_connected:
+            status_html = '<span class="status connected">Connected</span>'
+            button_html = f'<a href="{connect_url}" class="btn btn-secondary">Reconnect</a>'
         else:
             status_html = '<span class="status disconnected">Not connected</span>'
-            # Use full URL — relative paths lose the /prod stage prefix
-            base = AUTH_SETUP_URL.rsplit("/auth/setup", 1)[0] if AUTH_SETUP_URL else ""
-            connect_url = f"{base}/auth/connect/{name}?session={session_token}"
             button_html = f'<a href="{connect_url}" class="btn">Connect</a>'
 
         cards.append(f"""
@@ -361,6 +375,8 @@ h1 {{ font-size: 1.5rem; margin-bottom: 4px; }}
 .btn {{ background: #2563eb; color: white; text-decoration: none;
         padding: 8px 16px; border-radius: 6px; font-size: 0.875rem; }}
 .btn:hover {{ background: #1d4ed8; }}
+.btn-secondary {{ background: #6b7280; }}
+.btn-secondary:hover {{ background: #4b5563; }}
 .empty {{ color: #6b7280; margin-top: 24px; }}
 </style></head>
 <body>
