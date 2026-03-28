@@ -114,5 +114,4 @@ class ServiceStack(Stack):
         # ---- Outputs ----
         CfnOutput(self, "McpLambdaArn", value=mcp_lambda.function.function_arn,
                   description=f"{service_name} MCP Server Lambda ARN")
-        CfnOutput(self, "GatewayUrl", value=gateway.gateway_url,
-                  description=f"AgentCore Gateway URL for {service_name}")
+        # GatewayUrl output is created by the McpAgentCoreGateway construct.
