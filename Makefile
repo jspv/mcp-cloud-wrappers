@@ -1,4 +1,4 @@
-.PHONY: synth deploy-shared deploy-service deploy-all verify list bootstrap
+.PHONY: synth deploy-shared deploy-service deploy-all verify list bootstrap gen-tools
 
 PREFIX ?= mcp-wrappers
 
@@ -28,6 +28,9 @@ deploy-msgraph:
 	$(MAKE) deploy-service SERVICE=msgraph
 
 deploy-all: deploy-shared deploy-msgraph
+
+gen-tools:
+	uv run python scripts/gen_tools.py $(SERVICE) $(MCP_PKG_DIR)
 
 verify:
 	uv run python scripts/verify_deployment.py

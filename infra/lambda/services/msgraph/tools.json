@@ -1,19 +1,19 @@
 [
   {
     "name": "auth_status",
-    "description": "Show current Microsoft auth configuration and status."
+    "description": "Show current Microsoft auth configuration and cached accounts.\n\nWhen running inside the MCP Lambda wrapper framework, reports\nframework-managed authentication status instead of local MSAL state."
   },
   {
     "name": "start_auth",
-    "description": "Start Microsoft authentication. Returns an OAuth URL to open in your browser."
+    "description": "Start Microsoft authentication.\n\nIn Lambda mode, returns an OAuth authorization URL.\nIn local mode, starts the device-code flow."
   },
   {
     "name": "finish_auth",
-    "description": "Complete Microsoft authentication after user approval."
+    "description": "Complete Microsoft authentication after user approval.\n\nIn Lambda mode, this is not needed \u2014 call auth_status instead.\nIn local mode, completes the device-code flow."
   },
   {
     "name": "list_accounts",
-    "description": "List authenticated Microsoft accounts."
+    "description": "List authenticated Microsoft accounts.\n\nIn Lambda mode, returns the framework-managed account info."
   },
   {
     "name": "list_folders",
@@ -21,8 +21,21 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "account_id": {"type": "string"},
-        "include_hidden": {"type": "boolean"}
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "include_hidden": {
+          "default": false,
+          "type": "boolean"
+        }
       }
     }
   },
@@ -32,9 +45,25 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "account_id": {"type": "string"},
-        "folder": {"type": "string"},
-        "limit": {"type": "integer"}
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "folder": {
+          "default": "inbox",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        }
       }
     }
   },
@@ -44,49 +73,114 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "message_id": {"type": "string"},
-        "account_id": {"type": "string"}
+        "message_id": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
       },
-      "required": ["message_id"]
+      "required": [
+        "message_id"
+      ]
     }
   },
   {
     "name": "mark_message_read",
-    "description": "Mark a message as read or unread.",
+    "description": "Mark a message as read or unread. Requires Mail.ReadWrite permission.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "message_id": {"type": "string"},
-        "account_id": {"type": "string"},
-        "is_read": {"type": "boolean"}
+        "message_id": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "is_read": {
+          "default": true,
+          "type": "boolean"
+        }
       },
-      "required": ["message_id"]
+      "required": [
+        "message_id"
+      ]
     }
   },
   {
     "name": "move_message",
-    "description": "Move a message to another folder.",
+    "description": "Move a message to another folder. Requires Mail.ReadWrite permission.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "message_id": {"type": "string"},
-        "destination": {"type": "string"},
-        "account_id": {"type": "string"}
+        "message_id": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
       },
-      "required": ["message_id", "destination"]
+      "required": [
+        "message_id",
+        "destination"
+      ]
     }
   },
   {
     "name": "delete_message",
-    "description": "Delete a message or move it to Deleted Items.",
+    "description": "Delete a message or move it to Deleted Items. Requires Mail.ReadWrite permission.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "message_id": {"type": "string"},
-        "account_id": {"type": "string"},
-        "permanent": {"type": "boolean"}
+        "message_id": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "permanent": {
+          "default": false,
+          "type": "boolean"
+        }
       },
-      "required": ["message_id"]
+      "required": [
+        "message_id"
+      ]
     }
   },
   {
@@ -95,11 +189,28 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "query": {"type": "string"},
-        "account_id": {"type": "string"},
-        "limit": {"type": "integer"}
+        "query": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   {
@@ -108,17 +219,85 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "account_id": {"type": "string"},
-        "folder": {"type": "string"},
-        "sender_contains": {"type": "string"},
-        "subject_contains": {"type": "string"},
-        "received_after": {"type": "string"},
-        "unread_only": {"type": "boolean"},
-        "action": {"type": "string"},
-        "destination": {"type": "string"},
-        "limit": {"type": "integer"},
-        "max_passes": {"type": "integer"},
-        "dry_run": {"type": "boolean"}
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "folder": {
+          "default": "inbox",
+          "type": "string"
+        },
+        "sender_contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "subject_contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "received_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unread_only": {
+          "default": false,
+          "type": "boolean"
+        },
+        "action": {
+          "default": "delete",
+          "type": "string"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "max_passes": {
+          "default": 5,
+          "type": "integer"
+        },
+        "dry_run": {
+          "default": true,
+          "type": "boolean"
+        }
       }
     }
   },
@@ -128,7 +307,17 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "account_id": {"type": "string"}
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
       }
     }
   },
@@ -138,11 +327,54 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "account_id": {"type": "string"},
-        "start_iso": {"type": "string"},
-        "end_iso": {"type": "string"},
-        "calendar_id": {"type": "string"},
-        "limit": {"type": "integer"}
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_iso": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end_iso": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "calendar_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 25,
+          "type": "integer"
+        }
       }
     }
   },
@@ -152,10 +384,24 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "event_id": {"type": "string"},
-        "account_id": {"type": "string"}
+        "event_id": {
+          "type": "string"
+        },
+        "account_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
       },
-      "required": ["event_id"]
+      "required": [
+        "event_id"
+      ]
     }
   }
 ]

@@ -272,6 +272,14 @@ aws secretsmanager create-secret \
   --secret-string '{"MY_CLIENT_ID": "your-client-id", "MY_CLIENT_SECRET": "your-secret"}'
 ```
 
+**Generate `tools.json`** — AgentCore needs to know which tools the MCP server exposes. This introspects the MCP server and writes `tools.json` to the service directory:
+
+```bash
+make gen-tools SERVICE=my-service MCP_PKG_DIR=/path/to/my-service-mcp-repo
+```
+
+Re-run this whenever the MCP server's tool definitions change. For non-Python MCP servers, create `tools.json` manually.
+
 ### 4. Deploy
 
 ```bash
@@ -332,6 +340,7 @@ The Cognito user only needs to be created once. On first login via the hosted UI
 | `make deploy-service SERVICE=x` | Deploy a specific service |
 | `make deploy-msgraph` | Shortcut for the bundled msgraph example |
 | `make deploy-all` | Deploy shared + all services |
+| `make gen-tools SERVICE=x MCP_PKG_DIR=path` | Generate tools.json from the MCP server |
 | `make verify` | Run post-deploy smoke tests |
 
 ## Secrets and security
