@@ -299,6 +299,14 @@ make bootstrap
 # Deploy shared infrastructure (Cognito, DCR, OAuth callback)
 make deploy-shared
 
+# Create a Cognito user (needed to authenticate with the gateway)
+aws cognito-idp admin-create-user \
+  --user-pool-id $(aws cloudformation describe-stacks --stack-name mcp-wrappers-shared \
+    --query 'Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId622CD4B2`].OutputValue' --output text) \
+  --username your-email@example.com \
+  --user-attributes Name=email,Value=your-email@example.com Name=email_verified,Value=true \
+  --temporary-password 'TempPass123!'
+
 # Deploy a specific service
 make deploy-service SERVICE=msgraph
 
@@ -309,7 +317,9 @@ make deploy-all
 make verify
 ```
 
-The first `make` invocation automatically installs the CDK CLI as a local npm dependency — you don't need to install it globally. CDK context parameters are set in `cdk.json` or passed via environment variables (see [CDK context parameters](#cdk-context-parameters)).
+The first `make` invocation automatically installs the CDK CLI as a local npm dependency — you don't need to install it globally.
+
+The Cognito user only needs to be created once. On first login via the hosted UI, you'll be prompted to set a permanent password.
 
 ### Available targets
 
