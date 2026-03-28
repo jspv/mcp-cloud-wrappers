@@ -183,9 +183,11 @@ Create a directory under `infra/lambda/services/<your-service>/` with these file
 infra/lambda/services/my-service/
 ├── handler.py              # what to wrap, how to authenticate
 ├── service.env             # non-secret config (committed)
-├── service.local.env       # local config overrides (gitignored, optional)
-├── requirements.txt.example # dependency template (committed)
-└── requirements.txt        # actual dependencies with your paths (gitignored)
+├── oauth.json              # OAuth provider config (if service uses OAuth)
+├── tools.json              # tool definitions (generated via gen-tools)
+├── requirements.txt.example
+├── requirements.txt        # (gitignored)
+└── service.local.env       # (gitignored)
 ```
 
 **`service.env`** — non-secret configuration for this service. These values are baked into the Lambda package at deploy time, so **edit this before deploying**:
@@ -381,6 +383,7 @@ The Cognito user only needs to be created once. On first login via the hosted UI
 | `make deploy-service SERVICE=x` | Deploy a specific service |
 | `make deploy-all` | Deploy shared + all discovered services |
 | `make verify` | Run post-deploy smoke tests |
+| `make auth` | Open auth setup page in browser |
 
 ## Secrets and security
 
@@ -479,6 +482,44 @@ When a user first interacts with a service that requires OAuth:
 ```
 
 Token refresh is transparent — the handler checks expiry on every invocation and refreshes automatically using the stored refresh token.
+
+## Connecting external services
+
+After deploying, users need to connect their external accounts (Microsoft, Google, etc.)
+before the MCP tools can access their data.
+
+### Auth setup page
+
+Run:
+
+```bash
+make auth
+```
+
+This opens a web page where you:
+1. Log in with your Cognito account (same credentials as the MCP gateway)
+2. See all available services and their connection status
+3. Click "Connect" to authenticate with each external service
+
+The page handles the full OAuth flow — you just click through the provider's login.
+
+### For chat users (Claude.ai, ChatGPT, etc.)
+
+When you first use a tool that needs authentication, the agent will call `start_auth`
+which returns the auth setup page URL. Open it in your browser, complete the login,
+then tell the agent to try again.
+
+### Auth setup URL
+
+The URL is shown in the stack outputs after deploy:
+
+```bash
+aws cloudformation describe-stacks --stack-name mcp-wrappers-shared \
+  --query 'Stacks[0].Outputs[?contains(OutputKey,`AuthSetupUrl`)].OutputValue' \
+  --output text
+```
+
+Share this URL with end users who need to connect their accounts.
 
 ## Bundled example: Microsoft Graph (msgraph)
 
@@ -608,3 +649,11 @@ ServiceStack (one per wrapped service)
   ├── McpServerLambda      (Lambda + bundler + IAM role)
   └── McpAgentCoreGateway  (CfnGateway + CfnGatewayTarget + gateway role)
 ```
+
+### Gateway interceptor
+
+The framework adds a request interceptor to the AgentCore Gateway that extracts
+the Cognito `sub` from the JWT and injects it as `_cognito_sub` in the tool
+arguments. This is how the framework identifies the calling user for per-user
+credential lookup. The interceptor is created automatically as part of each
+service's gateway — no configuration needed.
