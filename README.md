@@ -145,9 +145,28 @@ The env var name (`MY_SERVICE_ACCESS_TOKEN` above) is whatever you set as `acces
 
 If your service doesn't need per-user OAuth (just API keys), no code changes are needed — the framework injects API keys as env vars directly.
 
-### 2. Create the Lambda handler
+### 2. Create the service directory
 
-Create a directory under `infra/lambda/services/<your-service>/` with two files.
+Create a directory under `infra/lambda/services/<your-service>/` with these files:
+
+```
+infra/lambda/services/my-service/
+├── handler.py              # what to wrap, how to authenticate
+├── service.env             # non-secret config (committed)
+├── service.local.env       # local overrides (gitignored, optional)
+├── requirements.txt        # dependencies (committed)
+└── requirements.local.txt  # local dependency overrides (gitignored, optional)
+```
+
+**`service.env`** — non-secret configuration for this service. These values are baked into the Lambda package at deploy time, so **edit this before deploying**:
+
+```
+# service.env
+MY_TENANT_ID=my-org-123
+MY_API_BASE_URL=https://api.provider.com/v1
+```
+
+For local development, create `service.local.env` (gitignored) to override values without changing the committed file. The framework loads `service.local.env` first when present.
 
 **`handler.py`** — declares *what* to wrap and *how* to authenticate:
 
@@ -157,9 +176,9 @@ from mcp_wrapper import McpServiceHandler, OAuthProviderConfig, ServiceConfig
 config = ServiceConfig(
     service_name="my-service",
     mcp_module="my_service_mcp.server",       # python -m my_service_mcp.server
-    passthrough_env_vars=["MY_TENANT_ID"],     # from service.env (Category 1)
-    service_secret_name="{prefix}-my-service-service-secrets",  # Category 2
-    oauth=OAuthProviderConfig(                 # Category 3: per-user OAuth
+    passthrough_env_vars=["MY_TENANT_ID"],     # from service.env
+    service_secret_name="{prefix}-my-service-service-secrets",
+    oauth=OAuthProviderConfig(
         provider_name="my-provider",
         auth_endpoint="https://provider.com/oauth2/authorize",
         token_endpoint="https://provider.com/oauth2/token",
@@ -178,18 +197,7 @@ def handler(event, context):
     return _handler.handle(event, context)
 ```
 
-The service directory also has a `service.env` for non-secret config:
-```
-# service.env
-MY_TENANT_ID=my-org-123
-```
-
-And the service secret in Secrets Manager holds credentials:
-```json
-{"MY_CLIENT_ID": "app-id-123", "MY_CLIENT_SECRET": "secret-456"}
-```
-
-`passthrough_env_vars` names which env vars (from `service.env` or Lambda env) to forward to the subprocess. Credentials belong in the service secret.
+`passthrough_env_vars` names which values from `service.env` to forward to the subprocess. Credentials belong in the service secret (see step 4).
 
 For a **non-Python MCP server**, use `command` and `args` instead of `mcp_module`:
 
@@ -254,33 +262,39 @@ ServiceStack(
     oauth_callback_url=shared.oauth_callback_url,
     oauth_state_table_arn=shared.oauth_state_table.table_arn,
     oauth_state_table_name=shared.oauth_state_table.table_name,
-    lambda_timeout=120,
-    lambda_memory=512,
     lambda_environment={
-        "MY_CLIENT_ID": app.node.try_get_context("my_client_id") or "",
         "SERVICE_SECRET_NAME": f"{prefix}-my-service-service-secrets",
     },
 )
 ```
 
-### 4. Deploy
+### 4. Pre-deploy setup
+
+These must be done **before deploying** the service:
+
+**Edit `service.env`** with your service's non-secret config. These values are baked into the Lambda package at deploy time:
+
+```
+# infra/lambda/services/my-service/service.env
+MY_TENANT_ID=your-actual-tenant-id
+```
+
+**Create the service secret** in Secrets Manager (credentials like client IDs and API keys):
+
+```bash
+aws secretsmanager create-secret \
+  --name mcp-wrappers-my-service-service-secrets \
+  --secret-string '{"MY_CLIENT_ID": "your-client-id", "MY_CLIENT_SECRET": "your-secret"}'
+```
+
+### 5. Deploy
 
 ```bash
 make deploy-shared                             # first time only (creates Cognito, DCR, OAuth callback)
 make deploy-service SERVICE=my-service         # deploy your service
 ```
 
-### 5. Post-deploy setup
-
-These steps can happen in any order, but must be done before first use:
-
-**Create the service secret** (if your service has Category 2 secrets like client secrets or API keys):
-
-```bash
-aws secretsmanager create-secret \
-  --name mcp-wrappers-my-service-service-secrets \
-  --secret-string '{"MY_CLIENT_SECRET": "the-secret-value"}'
-```
+### 6. Post-deploy setup
 
 **Register the OAuth callback URL** (if your service uses OAuth): take the `OAuthCallbackUrl` from the shared stack output and add it as a redirect URI in your OAuth provider's app registration.
 
@@ -430,15 +444,19 @@ The `infra/lambda/services/msgraph/` directory wraps an MCP server for Outlook m
 ### Deploy
 
 ```bash
-# 1. Deploy infrastructure
-make deploy-all
+# 1. Edit service.env with your tenant ID (before deploying)
+#    infra/lambda/services/msgraph/service.env:
+#    MICROSOFT_TENANT_ID=your-tenant-id
 
-# 2. Store your Azure app's client secret (anytime before first use)
+# 2. Create the service secret with your Azure app credentials
 aws secretsmanager create-secret \
   --name mcp-wrappers-msgraph-service-secrets \
-  --secret-string '{"MICROSOFT_CLIENT_SECRET": "your-azure-client-secret"}'
+  --secret-string '{"MICROSOFT_CLIENT_ID": "your-azure-client-id"}'
 
-# 3. Register the OAuthCallbackUrl (from deploy output) in your Azure App Registration
+# 3. Deploy
+make deploy-all
+
+# 4. Register the OAuthCallbackUrl (from deploy output) in your Azure App Registration
 #    under Authentication > Web > Redirect URIs
 ```
 
