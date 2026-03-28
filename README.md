@@ -626,12 +626,142 @@ Per-service configuration does not use CDK context. Non-secret config goes in `s
 
 ## Framework internals
 
-### `McpServiceHandler` lifecycle (per Lambda invocation)
+### End-to-end request flow (detailed)
 
-1. **Health check** — responds to `ping`/`health` events immediately
-2. **Extract user ID** — reads Cognito `sub` from AgentCore event JWT claims
-3. **Build subprocess env** — loads and merges all three credential categories
-4. **Launch subprocess** — via `StdioServerAdapterRequestHandler` + `BedrockAgentCoreGatewayTargetHandler`
+This is the complete path of a single tool call, from the MCP client through to the MCP server and back. Understanding this flow is important for debugging.
+
+```
+MCP Client (Claude.ai, ChatGPT, etc.)
+  │
+  │  MCP JSON-RPC over HTTPS
+  ▼
+AgentCore Gateway
+  │  Validates Cognito JWT (CUSTOM_JWT authorizer)
+  │  Rejects if invalid — tool call never reaches Lambda
+  │
+  │  Invokes request interceptor Lambda
+  ▼
+Interceptor Lambda (infra/lambda/interceptor/handler.py)
+  │  Receives: {interceptorInputVersion, mcp: {gatewayRequest: {headers, body}}}
+  │  Decodes JWT from Authorization header (base64, no verification — already validated)
+  │  Extracts Cognito "sub" claim
+  │  Injects _cognito_sub into body.params.arguments
+  │  Returns: {interceptorOutputVersion: "1.0", mcp: {transformedGatewayRequest: {body}}}
+  │
+  │  AgentCore forwards the modified request to the target Lambda
+  ▼
+MCP Server Lambda — handler entry point (handler.py in service directory)
+  │  Receives: event = tool arguments dict (e.g. {"folder": "inbox", "_cognito_sub": "abc123"})
+  │  context.client_context.custom = {bedrockAgentCoreToolName: "target___tool_name"}
+  │
+  │  Calls McpServiceHandler.handle(event, context)
+  ▼
+McpServiceHandler.handle() (packages/mcp-wrapper-runtime/src/mcp_wrapper/handler.py)
+  │
+  │  1. Health check: if event has "ping"/"health", return status immediately
+  │
+  │  2. Extract user ID: reads event.get("_cognito_sub")
+  │     Returns the Cognito sub or None
+  │
+  │  3. Strip _cognito_sub from event: event.pop("_cognito_sub", None)
+  │     FastMCP/Pydantic would reject it as an unexpected tool argument
+  │
+  │  4. Build subprocess environment (three categories):
+  │     Category 1: passthrough env vars from service.env (e.g. TENANT_ID)
+  │     Category 2: service secrets from Secrets Manager (e.g. CLIENT_ID)
+  │     Category 3: per-user OAuth credentials:
+  │       - If user_id is available AND credentials exist in Secrets Manager:
+  │           Load tokens, refresh if expired, set access_token_env_var + OAUTH_AUTHENTICATED=true
+  │       - If user_id is available but NO credentials:
+  │           Set OAUTH_AUTHENTICATED=false, OAUTH_AUTH_URL=AUTH_SETUP_URL
+  │       - If user_id is None (interceptor not working):
+  │           Set OAUTH_AUTHENTICATED=false (no OAUTH_AUTH_URL — can't do per-user lookup)
+  │
+  │  5. Launch MCP subprocess: python -m {mcp_module}
+  │     Subprocess receives the merged env vars
+  │     StdioServerAdapterRequestHandler bridges JSON-RPC to stdio
+  │     BedrockAgentCoreGatewayTargetHandler handles the AgentCore protocol
+  ▼
+MCP Server subprocess (e.g. msgraph_mcp.server)
+  │  Receives tool call via stdio (JSON-RPC)
+  │  Reads GRAPH_ACCESS_TOKEN (or equivalent) from env — uses it for API calls
+  │  If not authenticated: reads OAUTH_AUTH_URL from env, returns it via start_auth tool
+  │  Executes tool, returns result via stdio
+  ▼
+Response flows back: subprocess → handler → AgentCore Gateway → MCP Client
+```
+
+### Auth setup page flow (detailed)
+
+When a user needs to connect an external service (one-time setup):
+
+```
+User visits /auth/setup (via make auth, start_auth URL, or direct link)
+  │
+  ▼
+Auth Setup Lambda — /auth/setup route
+  │  No session → redirects to Cognito hosted UI login
+  ▼
+Cognito Hosted UI
+  │  User logs in (email/password, possibly MFA)
+  │  If already logged in (browser cookie), may auto-complete
+  │  Redirects to /auth/callback?code=xxx&state=yyy
+  ▼
+Auth Setup Lambda — /auth/callback route
+  │  Validates state from DynamoDB (prevents CSRF)
+  │  Exchanges Cognito auth code for tokens (POST to Cognito token endpoint)
+  │  Decodes ID token → extracts sub and email
+  │  Creates DynamoDB session (10-minute TTL, keyed by random session token)
+  │  Renders service connection page HTML
+  │  Each service card shows: display_name, connected/not connected, [Connect] button
+  │  Connect button URL: /auth/connect/{service}?session={token}
+  ▼
+User clicks [Connect]
+  │
+  ▼
+Auth Setup Lambda — /auth/connect/{service} route
+  │  Validates session token from DynamoDB → gets Cognito sub
+  │  Loads service OAuth config from SERVICE_OAUTH_CONFIGS env var
+  │  Reads client_id from Secrets Manager (service secret)
+  │  Generates PKCE code_verifier + code_challenge
+  │  Stores OAuth state in DynamoDB: {state, user_id, service_name, token_endpoint,
+  │    client_id, code_verifier, return_url=/auth/setup?session=xxx, ttl}
+  │  Redirects to external provider's OAuth authorization URL
+  ▼
+External Provider (Microsoft, Google, etc.)
+  │  User logs in and approves permissions
+  │  Redirects to /oauth/callback?code=xxx&state=yyy
+  ▼
+OAuth Callback Lambda — /oauth/callback route (existing, shared)
+  │  Validates state from DynamoDB
+  │  Exchanges authorization code for tokens (POST to provider's token endpoint)
+  │  With PKCE code_verifier if present
+  │  Stores tokens in Secrets Manager: {prefix}-{service}-user-{cognito_sub}
+  │  Checks for return_url in state record
+  │  If return_url present: redirects to /auth/setup?session=xxx&connected={service}
+  │  If no return_url: shows static "Authentication successful" HTML
+  ▼
+Auth Setup Lambda — /auth/setup route (return visit)
+  │  Session token present → loads session from DynamoDB
+  │  connected={service} param → shows success flash message
+  │  Re-checks connection status for all services
+  │  User sees "{display_name} — Connected ✓"
+```
+
+### Identity propagation — why inject-then-strip
+
+AgentCore Gateway validates Cognito JWTs but does **not** forward claims to Lambda targets. The Lambda receives only tool arguments in `event` and metadata in `context.client_context.custom` (tool name, gateway ID — no user identity).
+
+The framework uses a **request interceptor** to work around this:
+
+1. **Interceptor** decodes the JWT from the Authorization header and injects `_cognito_sub` into the JSON-RPC `params.arguments`
+2. **AgentCore** passes the modified arguments as `event` to the target Lambda
+3. **McpServiceHandler** reads `event.get("_cognito_sub")` to identify the user
+4. **McpServiceHandler** removes `_cognito_sub` from `event` before forwarding to `BedrockAgentCoreGatewayTargetHandler`
+
+The removal is necessary because FastMCP validates tool arguments against the function signature via Pydantic. An unexpected `_cognito_sub` parameter would cause a validation error. The identity rides in the arguments briefly, gets extracted by the handler, then gets stripped before reaching the MCP subprocess.
+
+The interceptor response **must** include `"interceptorOutputVersion": "1.0"` at the top level — AgentCore silently drops the request without it.
 
 ### Secrets Manager
 
@@ -643,17 +773,10 @@ See [Secrets and security](#secrets-and-security) for naming conventions, IAM sc
 SharedInfraStack
   ├── CognitoPool          (User Pool + resource server + hosted UI domain)
   ├── DcrBridge            (DynamoDB table + DCR Lambda + API Gateway)
-  └── OAuthBridge          (DynamoDB table + callback Lambda + /oauth/callback)
+  ├── OAuthBridge          (DynamoDB table + callback Lambda + /oauth/callback)
+  └── AuthSetup            (Cognito client + auth setup Lambda + /auth/* routes)
 
 ServiceStack (one per wrapped service)
   ├── McpServerLambda      (Lambda + bundler + IAM role)
-  └── McpAgentCoreGateway  (CfnGateway + CfnGatewayTarget + gateway role)
+  └── McpAgentCoreGateway  (CfnGateway + CfnGatewayTarget + interceptor Lambda + gateway role)
 ```
-
-### Gateway interceptor
-
-The framework adds a request interceptor to the AgentCore Gateway that extracts
-the Cognito `sub` from the JWT and injects it as `_cognito_sub` in the tool
-arguments. This is how the framework identifies the calling user for per-user
-credential lookup. The interceptor is created automatically as part of each
-service's gateway — no configuration needed.
