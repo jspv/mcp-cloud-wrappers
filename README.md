@@ -540,12 +540,12 @@ Pass via `-c key=value` on the CDK command line, or set defaults in `cdk.json`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `prefix` | `mcp-wrappers` | Resource name prefix for all stacks |
-| `microsoft_client_id` | — | Azure App Registration client ID (msgraph) |
-| `microsoft_tenant_id` | `organizations` | Azure AD tenant (msgraph) |
 | `domain_name` | — | Custom domain for Cognito hosted UI (optional) |
 | `hosted_zone_name` | — | Route53 hosted zone for custom domain (optional) |
 | `google_client_id_ssm` | — | SSM parameter for Google social federation (optional) |
 | `google_client_secret_ssm` | — | SSM parameter for Google social federation (optional) |
+
+Per-service configuration does not use CDK context. Non-secret config goes in `service.env`, credentials go in Secrets Manager. See [Three categories of environment variables](#three-categories-of-environment-variables).
 
 ## Framework internals
 

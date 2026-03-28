@@ -2,9 +2,9 @@
 """CDK app entry point — shared infra + per-service stacks.
 
 Usage:
-  uv run cdk synth
-  uv run cdk deploy mcp-wrappers-shared
-  uv run cdk deploy mcp-wrappers-msgraph -c microsoft_client_id=YOUR_CLIENT_ID
+  make deploy-shared          # shared infra (Cognito, DCR, OAuth callback)
+  make deploy-service SERVICE=msgraph   # a specific service
+  make deploy-all             # everything
 """
 
 from __future__ import annotations
@@ -53,8 +53,8 @@ ServiceStack(
     lambda_timeout=120,
     lambda_memory=512,
     lambda_environment={
-        # Per-service config (MICROSOFT_TENANT_ID etc.) comes from service.env.
-        # Per-service secrets (MICROSOFT_CLIENT_ID etc.) come from Secrets Manager.
+        # Per-service config comes from service.env in the service directory.
+        # Per-service secrets come from Secrets Manager.
         # Only framework plumbing goes here.
         "SERVICE_SECRET_NAME": f"{prefix}-msgraph-service-secrets",
     },
