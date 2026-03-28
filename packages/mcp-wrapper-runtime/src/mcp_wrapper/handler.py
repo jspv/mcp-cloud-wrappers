@@ -89,7 +89,7 @@ class McpServiceHandler:
                 "python": sys.version.split()[0],
             }
 
-        user_id = self._extract_user_id(event)
+        user_id = self._extract_user_id(event, context)
         env_vars = self._build_subprocess_env(user_id)
 
         # Lazy imports — keeps cold start fast when health-checking
@@ -129,41 +129,15 @@ class McpServiceHandler:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _extract_user_id(event) -> str | None:
-        """Extract Cognito ``sub`` from the AgentCore event payload.
+    def _extract_user_id(event, context=None) -> str | None:
+        """Extract user identity from the event.
 
-        Tries several common locations where AWS services place JWT claims.
-        Returns None if identity cannot be determined (e.g. health checks).
+        The AgentCore Gateway interceptor injects ``_cognito_sub`` into
+        the tool arguments.  This is the only reliable source of identity
+        for AgentCore invocations.
         """
-        if not isinstance(event, dict):
-            return None
-
-        # AgentCore Gateway / API Gateway v2 JWT authorizer
-        rc = event.get("requestContext", {})
-        authorizer = rc.get("authorizer", {})
-
-        jwt_claims = authorizer.get("jwt", {}).get("claims", {})
-        if jwt_claims.get("sub"):
-            return str(jwt_claims["sub"])
-
-        # API Gateway v1 Cognito authorizer
-        if authorizer.get("claims", {}).get("sub"):
-            return str(authorizer["claims"]["sub"])
-
-        # Custom Lambda authorizer (flat claims)
-        if authorizer.get("sub"):
-            return str(authorizer["sub"])
-
-        # Identity block (some AgentCore event formats)
-        identity = event.get("identity", {})
-        if isinstance(identity, dict) and identity.get("sub"):
-            return str(identity["sub"])
-
-        # Forwarded OIDC identity header
-        headers = event.get("headers", {})
-        if isinstance(headers, dict) and headers.get("x-amzn-oidc-identity"):
-            return str(headers["x-amzn-oidc-identity"])
-
+        if isinstance(event, dict):
+            return event.get("_cognito_sub")
         return None
 
     # ------------------------------------------------------------------ #
@@ -237,16 +211,11 @@ class McpServiceHandler:
                 env["OAUTH_AUTHENTICATED"] = "true"
                 return
 
-        # Not authenticated — provide auth URL for the MCP server to surface
+        # Not authenticated — provide auth setup page URL
         env["OAUTH_AUTHENTICATED"] = "false"
-        try:
-            auth_url = self.oauth_helper.build_auth_url(user_id, self.config, env)
-            env["OAUTH_AUTH_URL"] = auth_url
-        except Exception as exc:
-            print(
-                f"[mcp-wrapper] Warning: failed to build auth URL: {exc}",
-                file=sys.stderr,
-            )
+        auth_setup_url = os.environ.get("AUTH_SETUP_URL", "")
+        if auth_setup_url:
+            env["OAUTH_AUTH_URL"] = auth_setup_url
 
     def _refresh_credentials(
         self, creds: dict, env: dict, user_id: str
