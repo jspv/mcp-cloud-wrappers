@@ -216,13 +216,17 @@ mcp
 run-mcp-servers-with-aws-lambda
 boto3
 httpx
-mcp-wrapper-runtime
 
 # Your MCP server package — can be any pip-installable source:
 my-service-mcp                                                     # from PyPI
 # my-service-mcp @ git+https://github.com/you/my-service-mcp.git  # from a Git repo
 # my-service-mcp @ file:///path/to/local/checkout                  # from a local path
+
+# Note: mcp-wrapper-runtime is installed automatically by the bundler —
+# you don't need to list it here.
 ```
+
+For local development, you can create a `requirements.local.txt` (gitignored) in the same directory with `file://` paths to local checkouts. The bundler uses it when present, falls back to `requirements.txt` otherwise.
 
 For **non-Python MCP servers**, you still need the framework deps in `requirements.txt` (the Lambda handler itself is Python). Bundle your server binary or Node modules into the Lambda package via the `handler_source_dir` — place them alongside `handler.py` and the bundler copies them in.
 
@@ -472,10 +476,20 @@ mcp
 run-mcp-servers-with-aws-lambda
 boto3
 httpx
-mcp-wrapper-runtime
-msgraph-mcp @ file:///path/to/msgraph-email-calendar-mcp   # local checkout
-# or: msgraph-mcp                                           # when published to PyPI
+msgraph-mcp                                           # from PyPI (or use file:// in requirements.local.txt)
 ```
+
+For local development, create `requirements.local.txt` (gitignored) with the local path:
+
+```
+mcp
+run-mcp-servers-with-aws-lambda
+boto3
+httpx
+msgraph-mcp @ file:///path/to/msgraph-email-calendar-mcp
+```
+
+`mcp-wrapper-runtime` is installed automatically by the bundler in both cases.
 
 ## Using an external Cognito pool
 

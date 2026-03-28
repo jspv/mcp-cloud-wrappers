@@ -1,8 +1,12 @@
 """Local pip/uv bundler for Lambda deployment packages.
 
-Extracted from glidepath — installs requirements.txt into the CDK output
-directory using uv (preferred) or pip, then copies source files.  Falls
-back to Docker bundling if the local install fails.
+Installs requirements.txt (or requirements.local.txt if present) into
+the CDK output directory using uv (preferred) or pip, then copies source
+files.  The ``mcp-wrapper-runtime`` package is always installed
+automatically from this repo — it does not need to appear in
+requirements.txt.
+
+Falls back to Docker bundling if the local install fails.
 """
 
 from __future__ import annotations
@@ -15,6 +19,11 @@ import sys
 import aws_cdk as cdk
 import jsii
 
+# mcp-wrapper-runtime lives at a known location relative to this file.
+_RUNTIME_PKG = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "packages", "mcp-wrapper-runtime")
+)
+
 
 @jsii.implements(cdk.ILocalBundling)
 class LocalPipBundler:
@@ -23,32 +32,40 @@ class LocalPipBundler:
     def __init__(self, source_dir: str) -> None:
         self._source_dir = source_dir
 
+    def _pip_install(self, target_dir: str, *args: str) -> None:
+        """Install packages into *target_dir* using uv or pip."""
+        uv_bin = shutil.which("uv")
+        if uv_bin:
+            subprocess.check_call(
+                [uv_bin, "pip", "install", "--target", target_dir,
+                 "--link-mode", "copy", *args],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-t", target_dir, *args],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
     def try_bundle(self, output_dir: str, options) -> bool:  # type: ignore[override]
-        req = os.path.join(self._source_dir, "requirements.txt")
+        # Use requirements.local.txt if it exists (gitignored, for local
+        # file:// paths), otherwise fall back to requirements.txt.
+        req_local = os.path.join(self._source_dir, "requirements.local.txt")
+        req = req_local if os.path.exists(req_local) else os.path.join(
+            self._source_dir, "requirements.txt"
+        )
         try:
+            # Install mcp-wrapper-runtime from this repo automatically.
+            if os.path.isdir(_RUNTIME_PKG):
+                self._pip_install(output_dir, _RUNTIME_PKG)
+
+            # Install service requirements.
             if os.path.exists(req):
-                uv_bin = shutil.which("uv")
-                if uv_bin:
-                    subprocess.check_call(
-                        [
-                            uv_bin, "pip", "install",
-                            "-r", req,
-                            "--target", output_dir,
-                            "--link-mode", "copy",
-                        ],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                else:
-                    subprocess.check_call(
-                        [
-                            sys.executable, "-m", "pip", "install",
-                            "-r", req, "-t", output_dir,
-                        ],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-            # Copy source files to output
+                self._pip_install(output_dir, "-r", req)
+
+            # Copy source files to output.
             for item in os.listdir(self._source_dir):
                 src = os.path.join(self._source_dir, item)
                 dst = os.path.join(output_dir, item)

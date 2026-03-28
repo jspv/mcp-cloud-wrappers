@@ -16,6 +16,9 @@ cdk.out/
 .env
 *.pem
 
+# Local dependency overrides (contain absolute paths)
+requirements.local.txt
+
 # OS
 .DS_Store
 Thumbs.db
