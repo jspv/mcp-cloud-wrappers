@@ -320,7 +320,9 @@ def _render_service_page(cognito_sub, email, connected=None, session_token=""):
             button_html = ""
         else:
             status_html = '<span class="status disconnected">Not connected</span>'
-            connect_url = f"/auth/connect/{name}?session={session_token}"
+            # Use full URL — relative paths lose the /prod stage prefix
+            base = AUTH_SETUP_URL.rsplit("/auth/setup", 1)[0] if AUTH_SETUP_URL else ""
+            connect_url = f"{base}/auth/connect/{name}?session={session_token}"
             button_html = f'<a href="{connect_url}" class="btn">Connect</a>'
 
         cards.append(f"""
@@ -387,7 +389,7 @@ p {{ color: #374151; line-height: 1.6; }}
 a {{ color: #2563eb; }}
 </style></head>
 <body><div class="card"><h1>{title}</h1><p>{message}</p>
-<p><a href="/auth/setup">Back to setup</a></p>
+<p><a href="{AUTH_SETUP_URL or '/auth/setup'}">Back to setup</a></p>
 </div></body></html>"""
     return {"statusCode": status_code, "headers": {"Content-Type": "text/html"}, "body": html}
 
