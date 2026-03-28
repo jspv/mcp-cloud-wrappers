@@ -33,5 +33,8 @@ deploy-all: node_modules/.bin/cdk
 gen-tools:
 	uv run python scripts/gen_tools.py $(SERVICE)
 
+auth:
+	uv run python scripts/open_auth_page.py
+
 verify:
 	uv run python scripts/verify_deployment.py
