@@ -1,6 +1,11 @@
+# Framework dependencies (always required)
 mcp
 run-mcp-servers-with-aws-lambda
 boto3
 httpx
 mcp-wrapper-runtime
-msgraph-mcp
+
+# MCP server package — update to match your setup:
+msgraph-mcp                                                         # from PyPI
+# msgraph-mcp @ git+https://github.com/yourorg/msgraph-mcp.git     # from Git
+# msgraph-mcp @ file:///absolute/path/to/local/checkout             # from local path
