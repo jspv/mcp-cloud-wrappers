@@ -1,0 +1,3 @@
+httpx
+pyjwt[crypto]
+boto3
