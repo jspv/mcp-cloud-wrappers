@@ -53,8 +53,9 @@ ServiceStack(
     lambda_timeout=120,
     lambda_memory=512,
     lambda_environment={
-        "MICROSOFT_CLIENT_ID": app.node.try_get_context("microsoft_client_id") or "",
-        "MICROSOFT_TENANT_ID": app.node.try_get_context("microsoft_tenant_id") or "organizations",
+        # Per-service config (MICROSOFT_TENANT_ID etc.) comes from service.env.
+        # Per-service secrets (MICROSOFT_CLIENT_ID etc.) come from Secrets Manager.
+        # Only framework plumbing goes here.
         "SERVICE_SECRET_NAME": f"{prefix}-msgraph-service-secrets",
     },
 )

@@ -12,8 +12,8 @@ config = ServiceConfig(
     service_name="msgraph",
     mcp_module="msgraph_mcp.server",
     passthrough_env_vars=[
-        "MICROSOFT_CLIENT_ID",
-        "MICROSOFT_TENANT_ID",
+        "MICROSOFT_TENANT_ID",      # Category 1: non-secret config (Lambda env var)
+        # MICROSOFT_CLIENT_ID comes from the service secret (Category 2)
     ],
     service_secret_name="{prefix}-msgraph-service-secrets",
     oauth=OAuthProviderConfig(

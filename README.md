@@ -55,11 +55,11 @@ Every wrapped service may need some combination of these. The framework loads al
 
 | Category | Example | Where it lives | Who manages it |
 |----------|---------|-----------------|----------------|
-| 1. Static config | `API_BASE_URL`, `LOG_LEVEL` | CDK context / Lambda env var | You, at deploy time |
-| 2. Service secrets | `CLIENT_ID`, `CLIENT_SECRET`, `API_KEY` | Secrets Manager (one JSON object per service — each key becomes an env var) | You, created once |
+| 1. Service config | `TENANT_ID`, `API_BASE_URL` | `service.env` file in the service directory | You, committed to git |
+| 2. Service secrets | `CLIENT_ID`, `CLIENT_SECRET`, `API_KEY` | Secrets Manager (one JSON object per service — each key becomes an env var) | You, created once via AWS CLI |
 | 3. Per-user credentials | Access token | Secrets Manager (one per user per service) | Framework, via OAuth flow |
 
-Category 1 is for non-secret configuration. All credentials — including client IDs — belong in Category 2 (the service secret).
+Category 1 is for non-secret configuration — it lives in `service.env` alongside `handler.py`. All credentials — including client IDs — belong in Category 2 (the service secret in Secrets Manager).
 
 ## Prerequisites
 
@@ -98,8 +98,10 @@ mcp-lambda-wrappers/
 │       ├── oauth_callback/              # Shared: Generic OAuth2 callback (all providers)
 │       └── services/
 │           └── msgraph/                 # Example: Microsoft Graph wrapper
-│               ├── handler.py           #   15 lines of config
-│               └── requirements.txt     #   lists the MCP package + framework deps
+│               ├── handler.py           #   config: what to wrap, how to authenticate
+│               ├── service.env          #   non-secret config (tenant ID, etc.)
+│               ├── requirements.txt     #   MCP package + framework deps
+│               └── requirements.local.txt  # (gitignored) local file:// overrides
 │
 ├── scripts/verify_deployment.py         # Post-deploy smoke test
 ├── cdk.json
@@ -155,15 +157,14 @@ from mcp_wrapper import McpServiceHandler, OAuthProviderConfig, ServiceConfig
 config = ServiceConfig(
     service_name="my-service",
     mcp_module="my_service_mcp.server",       # python -m my_service_mcp.server
-    passthrough_env_vars=["API_BASE_URL"],     # Category 1: non-secret config
+    passthrough_env_vars=["MY_TENANT_ID"],     # from service.env (Category 1)
     service_secret_name="{prefix}-my-service-service-secrets",  # Category 2
     oauth=OAuthProviderConfig(                 # Category 3: per-user OAuth
         provider_name="my-provider",
         auth_endpoint="https://provider.com/oauth2/authorize",
         token_endpoint="https://provider.com/oauth2/token",
         scopes=["read", "write"],
-        # client_id and client_secret are both keys inside the service secret.
-        # The framework looks in service secrets first, then Lambda env vars.
+        # client_id and client_secret are keys inside the service secret.
         client_id_env="MY_CLIENT_ID",
         client_secret_key="MY_CLIENT_SECRET",
         uses_pkce=True,
@@ -177,12 +178,18 @@ def handler(event, context):
     return _handler.handle(event, context)
 ```
 
-In this example, the service secret JSON would contain both the client_id and client_secret:
+The service directory also has a `service.env` for non-secret config:
+```
+# service.env
+MY_TENANT_ID=my-org-123
+```
+
+And the service secret in Secrets Manager holds credentials:
 ```json
 {"MY_CLIENT_ID": "app-id-123", "MY_CLIENT_SECRET": "secret-456"}
 ```
 
-`passthrough_env_vars` is for non-secret configuration like API base URLs or region overrides that you set via CDK context or Lambda env vars. Credentials belong in the service secret.
+`passthrough_env_vars` names which env vars (from `service.env` or Lambda env) to forward to the subprocess. Credentials belong in the service secret.
 
 For a **non-Python MCP server**, use `command` and `args` instead of `mcp_module`:
 
@@ -446,7 +453,7 @@ from mcp_wrapper import McpServiceHandler, OAuthProviderConfig, ServiceConfig
 config = ServiceConfig(
     service_name="msgraph",
     mcp_module="msgraph_mcp.server",
-    passthrough_env_vars=["MICROSOFT_CLIENT_ID", "MICROSOFT_TENANT_ID"],
+    passthrough_env_vars=["MICROSOFT_TENANT_ID"],  # from service.env
     service_secret_name="{prefix}-msgraph-service-secrets",
     oauth=OAuthProviderConfig(
         provider_name="microsoft",

@@ -1,12 +1,12 @@
 """Base Lambda handler for MCP service wrappers.
 
 Handles the full credential lifecycle:
-1. Extract calling user identity from AgentCore event
-2. Load Category 1 (passthrough), Category 2 (service secrets),
-   Category 3 (per-user OAuth) into a merged env dict
-3. Refresh expired OAuth tokens via standard OAuth2
-4. Build auth URL when user is not yet authenticated
-5. Launch the MCP subprocess via mcp_lambda adapter
+1. Load service.env (non-secret config) into os.environ
+2. Extract calling user identity from AgentCore event
+3. Load service secrets (Category 2) and per-user OAuth (Category 3)
+4. Refresh expired OAuth tokens via standard OAuth2
+5. Build auth URL when user is not yet authenticated
+6. Launch the MCP subprocess via mcp_lambda adapter
 """
 
 from __future__ import annotations
@@ -18,6 +18,34 @@ import time
 from .config import ServiceConfig
 from .credentials import CredentialManager
 from .oauth import OAuthHelper
+
+
+def _load_service_env() -> None:
+    """Load ``service.env`` from the Lambda package into ``os.environ``.
+
+    The bundler copies service.env alongside handler.py.  We load it
+    once at module import time so the values are available both to the
+    handler (e.g. for OAuth URL building) and to the subprocess.
+    """
+    # In Lambda, the working directory is /var/task (where the bundle lives).
+    # service.env is also copied next to handler.py in the bundle root.
+    for candidate in ("service.env", "/var/task/service.env"):
+        if os.path.isfile(candidate):
+            with open(candidate) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip()
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+            break
+
+
+# Load service.env once when the Lambda cold-starts.
+_load_service_env()
 
 
 class McpServiceHandler:
