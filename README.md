@@ -247,28 +247,9 @@ For **non-Python MCP servers**, you still need the framework deps in `requiremen
 
 The MCP server is **not** part of this repository. It is pulled in as a dependency at build time, the same way any Lambda bundles its dependencies.
 
-### 3. Wire it into the CDK app
+That's it — no other files to edit. The CDK app auto-discovers every directory under `infra/lambda/services/` that contains a `handler.py` and creates a stack for it.
 
-Add a `ServiceStack` to `infra/app.py`:
-
-```python
-ServiceStack(
-    app,
-    f"{prefix}-my-service",
-    env=env,
-    service_name="my-service",
-    handler_source_dir=os.path.join(_LAMBDA_SERVICES, "my-service"),
-    discovery_url=shared.discovery_url,
-    oauth_callback_url=shared.oauth_callback_url,
-    oauth_state_table_arn=shared.oauth_state_table.table_arn,
-    oauth_state_table_name=shared.oauth_state_table.table_name,
-    lambda_environment={
-        "SERVICE_SECRET_NAME": f"{prefix}-my-service-service-secrets",
-    },
-)
-```
-
-### 4. Pre-deploy setup
+### 3. Pre-deploy setup
 
 These must be done **before deploying** the service:
 
@@ -276,8 +257,12 @@ These must be done **before deploying** the service:
 
 ```
 # infra/lambda/services/my-service/service.env
+LAMBDA_TIMEOUT=120
+LAMBDA_MEMORY=512
 MY_TENANT_ID=your-actual-tenant-id
 ```
+
+`LAMBDA_TIMEOUT` and `LAMBDA_MEMORY` are framework settings (used by CDK at deploy time). Everything else is passed to the MCP subprocess.
 
 **Create the service secret** in Secrets Manager (credentials like client IDs and API keys):
 
@@ -287,14 +272,14 @@ aws secretsmanager create-secret \
   --secret-string '{"MY_CLIENT_ID": "your-client-id", "MY_CLIENT_SECRET": "your-secret"}'
 ```
 
-### 5. Deploy
+### 4. Deploy
 
 ```bash
 make deploy-shared                             # first time only (creates Cognito, DCR, OAuth callback)
 make deploy-service SERVICE=my-service         # deploy your service
 ```
 
-### 6. Post-deploy setup
+### 5. Post-deploy setup
 
 **Register the OAuth callback URL** (if your service uses OAuth): take the `OAuthCallbackUrl` from the shared stack output and add it as a redirect URI in your OAuth provider's app registration.
 
