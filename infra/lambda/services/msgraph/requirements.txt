@@ -2,7 +2,5 @@ mcp
 run-mcp-servers-with-aws-lambda
 boto3
 httpx
-# Local packages — resolved relative to the repo root by the bundler.
-# For CI/production, publish these to a private PyPI or use --find-links.
-msgraph-mcp @ file:///Users/jspv/src/msgraph-email-calendar-mcp
-mcp-wrapper-runtime @ file:///Users/jspv/src/mcp-lambda-wrappers/packages/mcp-wrapper-runtime
+mcp-wrapper-runtime
+msgraph-mcp

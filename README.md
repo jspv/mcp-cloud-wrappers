@@ -414,7 +414,7 @@ Token refresh is transparent — the handler checks expiry on every invocation a
 
 ## Bundled example: Microsoft Graph (msgraph)
 
-The `infra/lambda/services/msgraph/` directory wraps [msgraph-email-calendar-mcp](https://github.com/jspv/msgraph-email-calendar-mcp), an MCP server for Outlook mail and calendar. It demonstrates the full pattern:
+The `infra/lambda/services/msgraph/` directory wraps an MCP server for Outlook mail and calendar (msgraph-email-calendar-mcp). It demonstrates the full pattern:
 
 ### Deploy
 
