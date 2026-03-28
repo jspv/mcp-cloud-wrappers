@@ -77,12 +77,26 @@ def _discover_services() -> list[dict]:
             with open(tools_file) as f:
                 tools = json.load(f)
 
+        # Load OAuth provider config from oauth.json if present.
+        oauth_file = os.path.join(service_dir, "oauth.json")
+        oauth_config = None
+        if os.path.isfile(oauth_file):
+            with open(oauth_file) as f:
+                oauth_config = json.load(f)
+            # Merge service.env values needed for endpoint_params resolution
+            if oauth_config.get("endpoint_params"):
+                resolved_env = {}
+                for placeholder, env_key in oauth_config["endpoint_params"].items():
+                    resolved_env[env_key] = env_values.get(env_key, "")
+                oauth_config["resolved_env"] = resolved_env
+
         services.append({
             "name": name,
             "dir": service_dir,
             "timeout": int(env_values.pop("LAMBDA_TIMEOUT", "120")),
             "memory": int(env_values.pop("LAMBDA_MEMORY", "512")),
             "tools": tools,
+            "oauth": oauth_config,
         })
     return services
 
@@ -100,11 +114,27 @@ env = cdk.Environment(
     region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
 )
 
+# Discover services first (need OAuth configs for shared stack).
+all_services = _discover_services()
+
+# Aggregate OAuth configs for the auth setup page.
+service_oauth_configs = []
+for svc in all_services:
+    if svc.get("oauth"):
+        service_oauth_configs.append({
+            "service_name": svc["name"],
+            "service_secret_name": f"{prefix}-{svc['name']}-service-secrets",
+            **svc["oauth"],
+        })
+
 # Shared infrastructure (deploy once).
-shared = SharedInfraStack(app, f"{prefix}-shared", env=env)
+shared = SharedInfraStack(
+    app, f"{prefix}-shared", env=env,
+    service_oauth_configs=service_oauth_configs or None,
+)
 
 # Auto-discover and create a stack for each service.
-for svc in _discover_services():
+for svc in all_services:
     ServiceStack(
         app,
         f"{prefix}-{svc['name']}",
@@ -118,6 +148,7 @@ for svc in _discover_services():
         lambda_timeout=svc["timeout"],
         lambda_memory=svc["memory"],
         tool_definitions=svc["tools"],
+        auth_setup_url=getattr(shared, "auth_setup_url", ""),
         lambda_environment={
             "SERVICE_SECRET_NAME": f"{prefix}-{svc['name']}-service-secrets",
         },
