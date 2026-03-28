@@ -279,10 +279,12 @@ aws secretsmanager create-secret \
 **Generate `tools.json`** — AgentCore needs to know which tools the MCP server exposes. This introspects the MCP server and writes `tools.json` to the service directory:
 
 ```bash
-make gen-tools SERVICE=my-service MCP_PKG_DIR=/path/to/my-service-mcp-repo
+make gen-tools SERVICE=my-service
 ```
 
-Re-run this whenever the MCP server's tool definitions change. For non-Python MCP servers, create `tools.json` manually.
+The script finds the MCP server's project directory automatically from the `file://` path in `requirements.local.txt`. Re-run this whenever the MCP server's tool definitions change.
+
+For non-Python MCP servers (or if there's no local checkout), create `tools.json` manually.
 
 ### 4. Deploy
 
@@ -340,7 +342,7 @@ The Cognito user only needs to be created once. On first login via the hosted UI
 | `make synth` | Synthesize all CloudFormation templates |
 | `make list` | List all stacks |
 | `make bootstrap` | Bootstrap CDK in your AWS account (first time) |
-| `make gen-tools SERVICE=x MCP_PKG_DIR=path` | Generate tools.json from the MCP server |
+| `make gen-tools SERVICE=x` | Generate tools.json from the MCP server |
 | `make deploy-shared` | Deploy shared infrastructure |
 | `make deploy-service SERVICE=x` | Deploy a specific service |
 | `make deploy-all` | Deploy shared + all discovered services |
@@ -461,7 +463,7 @@ aws secretsmanager create-secret \
   --secret-string '{"MICROSOFT_CLIENT_ID": "your-azure-client-id"}'
 
 # 3. Generate tools.json from the MCP server
-make gen-tools SERVICE=msgraph MCP_PKG_DIR=/path/to/msgraph-email-calendar-mcp
+make gen-tools SERVICE=msgraph
 
 # 4. Deploy
 make deploy-all
