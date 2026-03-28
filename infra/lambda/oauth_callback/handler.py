@@ -136,8 +136,20 @@ def _handle_callback(event):
     except secrets_client.exceptions.ResourceNotFoundException:
         secrets_client.create_secret(Name=secret_name, SecretString=creds_json)
 
-    # ---- Clean up state ----
+    # Clean up state
     table.delete_item(Key={"state": state})
+
+    # If the flow was started from the auth setup page, redirect back.
+    return_url = item.get("return_url")
+    if return_url:
+        separator = "&" if "?" in return_url else "?"
+        return {
+            "statusCode": 302,
+            "headers": {
+                "Location": f"{return_url}{separator}connected={service_name}",
+            },
+            "body": "",
+        }
 
     return _html_response(
         200,
