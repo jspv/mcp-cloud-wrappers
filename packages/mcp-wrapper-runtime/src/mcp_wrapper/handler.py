@@ -212,8 +212,13 @@ class McpServiceHandler:
                 refreshed = self._refresh_credentials(creds, env, user_id)
                 if refreshed:
                     creds = refreshed
+                else:
+                    # Refresh failed — don't use the expired token.
+                    # Fall through to "not authenticated" so the user
+                    # gets the auth setup URL instead of a 401.
+                    creds = None
 
-            if creds.get("access_token"):
+            if creds and creds.get("access_token"):
                 env[self.config.access_token_env_var] = creds["access_token"]
                 env["OAUTH_AUTHENTICATED"] = "true"
                 return
