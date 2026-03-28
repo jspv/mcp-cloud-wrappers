@@ -1,0 +1,30 @@
+[project]
+name = "mcp-lambda-wrappers"
+version = "0.1.0"
+description = "Reusable framework for wrapping stdio MCP services as AWS Lambda behind AgentCore Gateway"
+requires-python = ">=3.11"
+authors = [{ name = "jspv" }]
+dependencies = [
+    "aws-cdk-lib>=2.180.0",
+    "constructs>=10.0.0",
+    "jsii>=1.100.0",
+    "boto3>=1.35.0",
+    "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = []
+
+[tool.uv.sources]
+mcp-wrapper-runtime = { path = "packages/mcp-wrapper-runtime" }
+
+[tool.uv.workspace]
+members = ["packages/*"]

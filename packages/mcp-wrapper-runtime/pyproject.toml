@@ -1,0 +1,17 @@
+[project]
+name = "mcp-wrapper-runtime"
+version = "0.1.0"
+description = "Runtime library for MCP Lambda wrapper framework"
+requires-python = ">=3.11"
+authors = [{ name = "jspv" }]
+dependencies = [
+    "boto3>=1.35.0",
+    "httpx>=0.28.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_wrapper"]
