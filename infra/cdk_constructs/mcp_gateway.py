@@ -10,15 +10,20 @@ Tool definitions are read from ``tools.json`` in the service directory.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
+import aws_cdk as cdk
 from aws_cdk import (
     CfnOutput,
+    Duration,
     aws_bedrockagentcore as ac,
     aws_iam as iam,
     aws_lambda as lambda_,
 )
 from constructs import Construct
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _build_tool_definitions(
@@ -79,6 +84,22 @@ class McpAgentCoreGateway(Construct):
         )
         lambda_function.grant_invoke(gateway_role)
 
+        # ---- Interceptor Lambda ----
+        interceptor_fn = lambda_.Function(
+            self,
+            "InterceptorFn",
+            function_name=f"{prefix}-{service_name}-interceptor",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            architecture=lambda_.Architecture.ARM_64,
+            handler="handler.handler",
+            code=lambda_.Code.from_asset(
+                os.path.join(_HERE, "..", "lambda", "interceptor")
+            ),
+            timeout=Duration.seconds(5),
+            memory_size=128,
+        )
+        interceptor_fn.grant_invoke(gateway_role)
+
         # ---- AgentCore Gateway ----
         gateway = ac.CfnGateway(
             self,
@@ -98,6 +119,19 @@ class McpAgentCoreGateway(Construct):
                     supported_versions=versions,
                 ),
             ),
+            interceptor_configurations=[
+                ac.CfnGateway.GatewayInterceptorConfigurationProperty(
+                    interception_points=["REQUEST"],
+                    interceptor=ac.CfnGateway.InterceptorConfigurationProperty(
+                        lambda_=ac.CfnGateway.LambdaInterceptorConfigurationProperty(
+                            arn=interceptor_fn.function_arn,
+                        ),
+                    ),
+                    input_configuration=ac.CfnGateway.InterceptorInputConfigurationProperty(
+                        pass_request_headers=True,
+                    ),
+                )
+            ],
         )
 
         # ---- Gateway Target ----
