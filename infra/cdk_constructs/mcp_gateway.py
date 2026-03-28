@@ -125,11 +125,21 @@ class McpAgentCoreGateway(Construct):
         gateway_target.add_dependency(gateway)
 
         # ---- Outputs ----
-        self.gateway_url = gateway.attr_gateway_url
+        # Construct the URL from the gateway identifier — attr_gateway_url
+        # is not reliably returned by CloudFormation on updates.
+        from aws_cdk import Fn, Stack
+
+        self.gateway_url = Fn.sub(
+            "https://${GwId}.gateway.bedrock-agentcore.${Region}.amazonaws.com/mcp",
+            {
+                "GwId": gateway.attr_gateway_identifier,
+                "Region": Stack.of(self).region,
+            },
+        )
 
         CfnOutput(
             self,
             "GatewayUrl",
-            value=gateway.attr_gateway_url,
+            value=self.gateway_url,
             description=f"AgentCore Gateway URL for {service_name}",
         )
