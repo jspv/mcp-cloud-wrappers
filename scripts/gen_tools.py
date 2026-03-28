@@ -85,9 +85,15 @@ def simplify_prop(prop):
         for variant in prop["anyOf"]:
             if variant.get("type") != "null":
                 simple = {"type": variant["type"]}
+                # Preserve items for array types
+                if variant.get("type") == "array" and "items" in variant:
+                    simple["items"] = variant["items"]
                 if "default" in prop:
                     simple["default"] = prop["default"]
                 return simple
+    # Ensure arrays always have items
+    if prop.get("type") == "array" and "items" not in prop:
+        prop = {**prop, "items": {"type": "string"}}
     if "type" not in prop:
         return {"type": "string"}
     return prop
