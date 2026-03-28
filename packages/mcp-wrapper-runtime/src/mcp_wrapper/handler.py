@@ -90,6 +90,13 @@ class McpServiceHandler:
             }
 
         user_id = self._extract_user_id(event, context)
+
+        # Strip _cognito_sub from event before forwarding to the MCP
+        # subprocess — it's a framework field, not a tool argument.
+        # FastMCP/Pydantic would reject it as an unexpected keyword.
+        if isinstance(event, dict):
+            event.pop("_cognito_sub", None)
+
         env_vars = self._build_subprocess_env(user_id)
 
         # Lazy imports — keeps cold start fast when health-checking
