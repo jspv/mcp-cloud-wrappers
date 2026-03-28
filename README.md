@@ -336,11 +336,10 @@ The Cognito user only needs to be created once. On first login via the hosted UI
 | `make synth` | Synthesize all CloudFormation templates |
 | `make list` | List all stacks |
 | `make bootstrap` | Bootstrap CDK in your AWS account (first time) |
+| `make gen-tools SERVICE=x MCP_PKG_DIR=path` | Generate tools.json from the MCP server |
 | `make deploy-shared` | Deploy shared infrastructure |
 | `make deploy-service SERVICE=x` | Deploy a specific service |
-| `make deploy-msgraph` | Shortcut for the bundled msgraph example |
-| `make deploy-all` | Deploy shared + all services |
-| `make gen-tools SERVICE=x MCP_PKG_DIR=path` | Generate tools.json from the MCP server |
+| `make deploy-all` | Deploy shared + all discovered services |
 | `make verify` | Run post-deploy smoke tests |
 
 ## Secrets and security

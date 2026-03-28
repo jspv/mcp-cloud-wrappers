@@ -24,10 +24,8 @@ deploy-shared: node_modules/.bin/cdk
 deploy-service: node_modules/.bin/cdk
 	$(CDK) deploy $(PREFIX)-$(SERVICE)
 
-deploy-msgraph:
-	$(MAKE) deploy-service SERVICE=msgraph
-
-deploy-all: deploy-shared deploy-msgraph
+deploy-all: node_modules/.bin/cdk
+	$(CDK) deploy --all
 
 gen-tools:
 	uv run python scripts/gen_tools.py $(SERVICE) $(MCP_PKG_DIR)
