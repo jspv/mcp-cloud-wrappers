@@ -12,7 +12,7 @@ import aws_cdk as cdk
 from aws_cdk import CfnOutput, Stack
 from constructs import Construct
 
-from cdk_constructs import CognitoPool, DcrBridge, OAuthBridge
+from cdk_constructs import CognitoPool, DcrBridge, OAuthBridge, AuthSetup
 
 
 class SharedInfraStack(Stack):
@@ -32,6 +32,7 @@ class SharedInfraStack(Stack):
         external_user_pool_arn: str | None = None,
         external_hosted_ui_domain: str | None = None,
         external_resource_server_identifier: str | None = None,
+        service_oauth_configs: list[dict] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -76,6 +77,35 @@ class SharedInfraStack(Stack):
         )
         self.oauth_callback_url = oauth.callback_url
         self.oauth_state_table = oauth.state_table
+
+        # ---- Auth Setup (web page for connecting external services) ----
+        self.auth_setup_url = ""
+        if service_oauth_configs:
+            import json as _json
+            # Determine user pool reference
+            if external_user_pool_id:
+                from aws_cdk import aws_cognito as cog
+                _user_pool = cog.UserPool.from_user_pool_id(
+                    self, "ImportedPool", external_user_pool_id
+                )
+            else:
+                _user_pool = cognito_pool.user_pool
+
+            auth = AuthSetup(
+                self,
+                "AuthSetup",
+                prefix=prefix,
+                api=dcr.api,
+                user_pool=_user_pool,
+                user_pool_id=self.user_pool_id,
+                hosted_ui_domain=self.hosted_ui_domain,
+                oauth_callback_url=oauth.callback_url,
+                oauth_state_table_name=oauth.state_table.table_name,
+                service_oauth_configs=_json.dumps(service_oauth_configs),
+            )
+            self.auth_setup_url = auth.auth_setup_url
+            CfnOutput(self, "AuthSetupUrl", value=auth.auth_setup_url,
+                      description="Auth setup page URL")
 
         # ---- Outputs ----
         CfnOutput(self, "DcrApiUrl", value=dcr.dcr_api_url,
