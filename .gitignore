@@ -30,3 +30,7 @@ Thumbs.db
 .vscode/
 *.swp
 .cache/
+.claude/
+
+# Docs (plans/specs generated locally)
+docs/
