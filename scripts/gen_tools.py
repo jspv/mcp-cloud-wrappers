@@ -38,7 +38,7 @@ def _find_mcp_pkg_dir(service_dir: str) -> str | None:
 
     Looks for a ``file://`` path.  Returns the local path or None.
     """
-    for filename in ("requirements.txt",):
+    for filename in ("requirements.local.txt", "requirements.txt"):
         req_path = os.path.join(service_dir, filename)
         if not os.path.isfile(req_path):
             continue

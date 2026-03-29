@@ -18,6 +18,7 @@ cdk.out/
 
 # Per-service files that contain local paths (use .example as template)
 infra/lambda/services/*/requirements.txt
+infra/lambda/services/*/requirements.local.txt
 service.local.env
 
 # OS

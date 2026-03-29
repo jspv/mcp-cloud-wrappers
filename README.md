@@ -1,14 +1,14 @@
 # MCP Cloud Wrappers
 
-**Take any stdio MCP server and deploy it to the cloud — accessible from ChatGPT, Claude.ai, and any MCP-compatible client on web and mobile.**
+**Take any stdio MCP server and deploy it to the cloud — accessible from the online versions ChatGPT, Claude.ai, and any MCP-compatible client on web and mobile.**
 
-Most MCP servers run locally — they work great with Claude Desktop or Claude Code on your machine, but they can't be used from ChatGPT, Claude.ai on the web, or mobile apps. This framework changes that. You bring an existing stdio MCP server, and this framework deploys it as a cloud-hosted MCP endpoint that any client can connect to, with full user authentication and per-user OAuth for external services.
+Most MCP servers run locally — they work great with Claude Desktop or Claude Code on your machine, but they can't be used from ChatGPT, Claude.ai on the web, or mobile apps. This framework changes that. You bring an existing stdio MCP server, and this framework deploys it as an AWS-hosted MCP endpoint that any client can connect to, with full user authentication and per-user OAuth for external services.
 
 ## What this does
 
-- **Any stdio MCP server** → cloud-hosted MCP endpoint with a URL
+- **Most stdio MCP servers** → cloud-hosted MCP endpoint with a URL
 - **Works with ChatGPT, Claude.ai, and any MCP client** — web, mobile, desktop
-- **Per-user authentication** — each user logs in via Cognito and connects their own external accounts (Microsoft, Google, etc.)
+- **Per-user authentication** — each user logs in via Cognito and then connects their own external accounts (Microsoft, Google, etc.) as needed by the MCP
 - **Automatic OAuth management** — token exchange, refresh, per-user storage in Secrets Manager
 - **Zero MCP server changes required** for basic services; one-line change for services with per-user OAuth
 - **Add a new service in minutes** — create a directory with 3-4 config files, deploy
@@ -40,7 +40,7 @@ Your MCP server doesn't need to know anything about Lambda, AgentCore, or Cognit
                                      │
             ┌────────────────────────┼────────────────────────┐
             │                        │                        │
-  ┌─────────▼──────────┐  ┌─────────▼──────────┐  ┌─────────▼──────────┐
+  ┌─────────▼──────────┐  ┌──────────▼─────────┐  ┌───────────▼────────┐
   │  Service A         │  │  Service B         │  │  Service C         │
   │                    │  │                    │  │                    │
   │  AgentCore Gateway │  │  AgentCore Gateway │  │  AgentCore Gateway │
@@ -51,24 +51,24 @@ Your MCP server doesn't need to know anything about Lambda, AgentCore, or Cognit
   └────────────────────┘  └────────────────────┘  └────────────────────┘
 ```
 
-Each service gets its own Lambda + AgentCore Gateway. They share the Cognito pool, DCR endpoint, and OAuth callback infrastructure.
+Each MCP service gets its own Lambda + AgentCore Gateway. They share the Cognito pool, DCR endpoint, and OAuth callback infrastructure.
 
 ### Two layers of authentication
 
 | Layer | Purpose | Mechanism |
 |-------|---------|-----------|
-| **Caller auth** | Who is calling the MCP gateway? | Cognito JWT validated by AgentCore Gateway |
+| **Caller auth** | Control who can call the MCP gateway | Cognito JWT validated by AgentCore Gateway |
 | **Backend auth** | What can the service access on behalf of the user? | Standard OAuth2 (authorization code + PKCE) managed by the framework |
 
 ### Three categories of environment variables
 
-Every wrapped service may need some combination of these. The framework loads all three categories and merges them into the subprocess environment automatically.
+Every wrapped MCP service may need some combination of these. The framework loads all three categories and merges them into the subprocess environment automatically.
 
 | Category | Example | Where it lives | Who manages it |
 |----------|---------|-----------------|----------------|
-| 1. Service config | `TENANT_ID`, `API_BASE_URL` | `service.env` file in the service directory | You, committed to git |
-| 2. Service secrets | `CLIENT_ID`, `CLIENT_SECRET`, `API_KEY` | Secrets Manager (one JSON object per service — each key becomes an env var) | You, created once via AWS CLI |
-| 3. Per-user credentials | Access token | Secrets Manager (one per user per service) | Framework, via OAuth flow |
+| 1. MCP Service config | `TENANT_ID`, `API_BASE_URL` | `service.env` file in the service directory | You, committed to git |
+| 2. MCP Service secrets | `CLIENT_ID`, `CLIENT_SECRET`, `API_KEY` | Secrets Manager (one JSON object per service — each key becomes an env var) | You, created once via AWS CLI |
+| 3. MCP Per-user credentials | Access token | Secrets Manager (one per user per service) | Framework, via OAuth flow |
 
 Category 1 is for non-secret configuration — it lives in `service.env` alongside `handler.py`. All credentials — including client IDs — belong in Category 2 (the service secret in Secrets Manager).
 
@@ -79,6 +79,7 @@ Category 1 is for non-secret configuration — it lives in `service.env` alongsi
 - Node.js (CDK CLI runs on Node; the rest of the project is Python)
 - AWS CLI configured with credentials
 - CDK bootstrapped: `make bootstrap` (or see [Deployment](#deployment))
+- stdio-based MCP server code that can run as a lambda
 
 ## Repository structure
 
@@ -110,11 +111,11 @@ mcp-cloud-wrappers/
 │       └── services/
 │           └── <your-service>/              # One directory per wrapped MCP service
 │               ├── handler.py               #   config: what to wrap, how to authenticate
-│               ├── service.env              #   non-secret config (committed)
+│               ├── service.env              #   non-secret config
 │               ├── tools.json               #   tool definitions (generated via gen-tools)
-│               ├── requirements.txt.example #   dependency template (committed)
-│               ├── requirements.txt         #   (gitignored) actual deps with your paths
-│               └── service.local.env        #   (gitignored) local config overrides
+│               ├── requirements.txt.example #   dependency template
+│               ├── requirements.txt         #   actual deps with your paths
+│               └── service.local.env        #   local config overrides
 │
 ├── scripts/
 │   ├── gen_tools.py                     # Generate tools.json from MCP server
@@ -124,9 +125,36 @@ mcp-cloud-wrappers/
 └── pyproject.toml
 ```
 
+## Which MCP servers work with this framework?
+
+The framework launches your MCP server as a **subprocess inside AWS Lambda** and communicates over **stdio**. This means your server must:
+
+- **Use stdio transport** — read/write MCP JSON-RPC on stdin/stdout. Servers that only support SSE, streamable HTTP, or WebSocket transports won't work.
+- **Be stateless across calls** — each tool invocation spawns a fresh subprocess. There is no persistent process, no in-memory state between calls, and no connection pooling. If your server needs state, use an external store (DynamoDB, S3, etc.).
+- **Not write to the filesystem** — Lambda's `/var/task` is read-only. Guard writes behind an env var check (see [Prepare your MCP server](#1-prepare-your-mcp-server)), or write to `/tmp` (ephemeral, wiped between invocations).
+- **Accept configuration via environment variables** — credentials, API keys, and tokens are injected as env vars. No config files are read from disk at runtime.
+- **Complete within the Lambda timeout** — default 120 seconds, max 900. Each tool call must finish in one invocation.
+
+### What works well
+
+- **Python servers** (FastMCP, MCP Python SDK) — best supported path via `mcp_module`
+- **Node.js, Go, Rust, or any compiled binary** — use `command`/`args` in ServiceConfig (binaries must target Linux ARM64)
+- **API-wrapping servers** (REST, GraphQL) — ideal fit; stateless request-response
+- **Servers using only API keys** — simplest case, no OAuth needed
+- **Servers using OAuth** — framework manages the full token lifecycle; server just reads an env var
+
+### What doesn't work
+
+- **SSE-only or HTTP-only transport** — no stdio, no way to communicate with the subprocess
+- **Servers that rely on cross-tool state** — e.g., tool A creates a session that tool B reads. Each invocation is independent.
+- **MCP Resources or Prompts** — AgentCore Gateway only routes tool calls, not resource or prompt requests
+- **Server-initiated notifications or streaming** — Lambda is request-response only
+- **More than 30 tools** — AgentCore paginates at 30 and current clients (Claude.ai, ChatGPT) don't follow pagination
+- **Heavy startup** — subprocess cold start (Python interpreter + imports) typically adds 1-3 seconds; servers with heavy dependencies (pandas, torch) will be slower
+
 ## Wrapping a new MCP service — step by step
 
-This section walks through the full process. The bundled `msgraph` wrapper is a concrete example of every step described here.
+This section walks through the full process. The bundled `msgraph` wrapper which wraps https://github.com/jspv/msgraph-email-calendar-mcp is a concrete example of every step described here.
 
 ### 1. Prepare your MCP server
 
@@ -136,7 +164,7 @@ There are two things to adapt in your server for Lambda compatibility:
 
 #### a. Accept a framework-injected access token
 
-If your service uses per-user OAuth, find the place in your MCP server that acquires an access token and add an env var check at the top. This lets the same code work both locally (where it runs its own auth) and inside Lambda (where the framework manages auth):
+If your service uses per-user OAuth, you'll want to modify it it accecpt that access token as an environment variable which will be passed in by the framework.  Find the place in your MCP server that acquires an access token and add an env var check at the top. This lets the same code work both locally (where it runs its own auth) and inside Lambda (where the framework manages auth):
 
 **Python** — in your MCP server's auth or HTTP client module:
 ```python
@@ -162,7 +190,7 @@ The env var name (`MY_SERVICE_ACCESS_TOKEN` above) is whatever you set as `acces
 
 If your service doesn't need per-user OAuth (just API keys), no code changes are needed — the framework injects API keys as env vars directly.
 
-#### b. Don't write to the Lambda filesystem
+#### b. Don't write to the Lambda filesystem (I.e., your mcp needs to be able to run as a lambda)
 
 AWS Lambda's `/var/task` directory is **read-only**. If your MCP server writes files at startup (token caches, SQLite databases, temp files), those writes will fail in Lambda.
 
@@ -186,30 +214,27 @@ Common sources of filesystem writes to watch for:
 - **Session state files** — the framework handles state via DynamoDB/Secrets Manager
 - **SQLite databases** — if unavoidable, write to `/tmp` (the only writable path in Lambda)
 
-### 2. Create the service directory
+### 2. Create the service directory under infra/lambda/services for your server's registration
 
 Create a directory under `infra/lambda/services/<your-service>/` with these files:
 
 ```
 infra/lambda/services/my-service/
 ├── handler.py              # what to wrap, how to authenticate
-├── service.env             # non-secret config (committed)
+├── service.env             # non-secret config
 ├── oauth.json              # OAuth provider config (if service uses OAuth)
 ├── tools.json              # tool definitions (generated via gen-tools)
 ├── requirements.txt.example
-├── requirements.txt        # (gitignored)
-└── service.local.env       # (gitignored)
+└── requirements.txt        # actual deps with your paths
 ```
 
-**`service.env`** — non-secret configuration for this service. These values are baked into the Lambda package at deploy time, so **edit this before deploying**:
+**`service.env`** — non-secret configuration for this service:
 
 ```
 # service.env
 MY_TENANT_ID=my-org-123
 MY_API_BASE_URL=https://api.provider.com/v1
 ```
-
-For local development, create `service.local.env` (gitignored) to override values without changing the committed file. The framework loads `service.local.env` first when present.
 
 **`handler.py`** — declares *what* to wrap and *how* to authenticate:
 
@@ -257,11 +282,10 @@ config = ServiceConfig(
 )
 ```
 
-**`requirements.txt.example`** (committed) — a template showing the dependencies. Copy it to `requirements.txt` (gitignored) and fill in your package source:
+**`requirements.txt.example`** — a template showing the dependencies. Copy it to `requirements.txt` and fill in your package source:
 
 ```
 # Copy this file to requirements.txt and update paths.
-# requirements.txt is gitignored (contains local paths).
 
 # Framework dependencies (always required)
 mcp
@@ -285,19 +309,6 @@ That's it — no other files to edit. The CDK app auto-discovers every directory
 
 ### 3. Pre-deploy setup
 
-These must be done **before deploying** the service:
-
-**Edit `service.env`** with your service's non-secret config. These values are baked into the Lambda package at deploy time:
-
-```
-# infra/lambda/services/my-service/service.env
-LAMBDA_TIMEOUT=120
-LAMBDA_MEMORY=512
-MY_TENANT_ID=your-actual-tenant-id
-```
-
-`LAMBDA_TIMEOUT` and `LAMBDA_MEMORY` are framework settings (used by CDK at deploy time). Everything else is passed to the MCP subprocess.
-
 **Create the service secret** in Secrets Manager (credentials like client IDs and API keys):
 
 ```bash
@@ -306,15 +317,15 @@ aws secretsmanager create-secret \
   --secret-string '{"MY_CLIENT_ID": "your-client-id", "MY_CLIENT_SECRET": "your-secret"}'
 ```
 
-**Generate `tools.json`** — AgentCore needs to know which tools the MCP server exposes. This introspects the MCP server and writes `tools.json` to the service directory:
+**Generate `tools.json`** — AgentCore needs to know which tools the MCP server exposes. If you have a local checkout of the MCP server (referenced via a `file://` path in `requirements.txt`), the script can introspect it automatically:
 
 ```bash
 make gen-tools SERVICE=my-service
 ```
 
-The script finds the MCP server's project directory automatically from the `file://` path in `requirements.txt`. Re-run this whenever the MCP server's tool definitions change.
+Re-run this whenever the MCP server's tool definitions change.
 
-For non-Python MCP servers (or if there's no local checkout), create `tools.json` manually.
+If there's no local checkout (e.g., the package comes from PyPI or a git URL) or the server isn't Python, create `tools.json` manually. It's a JSON array where each entry has `name`, `description`, and an optional `inputSchema` with JSON Schema properties. See `infra/lambda/services/msgraph/tools.json` for a working example.
 
 ### 4. Deploy
 
