@@ -86,7 +86,7 @@ mcp-cloud-wrappers/
 ├── packages/
 │   └── mcp-wrapper-runtime/             # Framework runtime (installed into each Lambda)
 │       └── src/mcp_wrapper/
-│           ├── config.py                # ServiceConfig, OAuthProviderConfig
+│           ├── config.py                # ServiceConfig, OAuthProviderConfig, load_oauth_json
 │           ├── credentials.py           # CredentialManager (Secrets Manager)
 │           ├── oauth.py                 # OAuthHelper (PKCE, exchange, refresh)
 │           └── handler.py              # McpServiceHandler (base Lambda handler)
@@ -213,23 +213,14 @@ For local development, create `service.local.env` (gitignored) to override value
 **`handler.py`** — declares *what* to wrap and *how* to authenticate:
 
 ```python
-from mcp_wrapper import McpServiceHandler, OAuthProviderConfig, ServiceConfig
+from mcp_wrapper import McpServiceHandler, ServiceConfig, load_oauth_json
 
 config = ServiceConfig(
     service_name="my-service",
     mcp_module="my_service_mcp.server",       # python -m my_service_mcp.server
     passthrough_env_vars=["MY_TENANT_ID"],     # from service.env
     service_secret_name="{prefix}-my-service-service-secrets",
-    oauth=OAuthProviderConfig(
-        provider_name="my-provider",
-        auth_endpoint="https://provider.com/oauth2/authorize",
-        token_endpoint="https://provider.com/oauth2/token",
-        scopes=["read", "write"],
-        # client_id and client_secret are keys inside the service secret.
-        client_id_env="MY_CLIENT_ID",
-        client_secret_key="MY_CLIENT_SECRET",
-        uses_pkce=True,
-    ),
+    oauth=load_oauth_json(),                   # reads oauth.json (single source of truth)
     access_token_env_var="MY_SERVICE_ACCESS_TOKEN",
 )
 
@@ -239,7 +230,7 @@ def handler(event, context):
     return _handler.handle(event, context)
 ```
 
-`passthrough_env_vars` names which values from `service.env` to forward to the subprocess. Credentials belong in the service secret (see step 3).
+`passthrough_env_vars` names which values from `service.env` to forward to the subprocess. Credentials belong in the service secret (see step 3). OAuth provider config (endpoints, scopes, client keys) is defined in `oauth.json` — not in this file.
 
 For a **non-Python MCP server**, use `command` and `args` instead of `mcp_module`:
 
@@ -249,7 +240,7 @@ config = ServiceConfig(
     command="/var/task/node_modules/.bin/my-mcp-server",
     args=["--stdio"],
     service_secret_name="{prefix}-my-node-service-secrets",
-    oauth=OAuthProviderConfig(...),
+    oauth=load_oauth_json(),
     access_token_env_var="MY_SERVICE_ACCESS_TOKEN",
 )
 ```
@@ -563,23 +554,14 @@ The complete handler — everything else is framework-managed:
 
 ```python
 # infra/lambda/services/msgraph/handler.py
-from mcp_wrapper import McpServiceHandler, OAuthProviderConfig, ServiceConfig
+from mcp_wrapper import McpServiceHandler, ServiceConfig, load_oauth_json
 
 config = ServiceConfig(
     service_name="msgraph",
     mcp_module="msgraph_mcp.server",
-    passthrough_env_vars=["MICROSOFT_TENANT_ID"],  # from service.env
+    passthrough_env_vars=["MICROSOFT_TENANT_ID"],
     service_secret_name="{prefix}-msgraph-service-secrets",
-    oauth=OAuthProviderConfig(
-        provider_name="microsoft",
-        auth_endpoint="https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
-        token_endpoint="https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
-        scopes=["User.Read", "Mail.ReadWrite", "Calendars.Read"],
-        client_id_env="MICROSOFT_CLIENT_ID",
-        client_secret_key="MICROSOFT_CLIENT_SECRET",
-        endpoint_params={"tenant_id": "MICROSOFT_TENANT_ID"},
-        uses_pkce=True,
-    ),
+    oauth=load_oauth_json(),        # reads oauth.json — single source of truth
     access_token_env_var="GRAPH_ACCESS_TOKEN",
 )
 
