@@ -3,7 +3,7 @@ name = "mcp-cloud-wrappers"
 version = "0.1.0"
 description = "Deploy any stdio MCP server to the cloud — accessible from ChatGPT, Claude.ai, and any MCP client on web and mobile"
 requires-python = ">=3.11"
-authors = [{ name = "jspv" }]
+authors = [{ name = "jspv", email = "jspvgithub@twinleaf.xyz" }]
 dependencies = [
     "aws-cdk-lib>=2.180.0",
     "constructs>=10.0.0",

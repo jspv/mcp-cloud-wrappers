@@ -3,7 +3,7 @@ name = "mcp-wrapper-runtime"
 version = "0.1.0"
 description = "Runtime library for MCP Lambda wrapper framework"
 requires-python = ">=3.11"
-authors = [{ name = "jspv" }]
+authors = [{ name = "jspv", email = "jspvgithub@twinleaf.xyz" }]
 dependencies = [
     "boto3>=1.35.0",
     "httpx>=0.28.0",
