@@ -32,7 +32,8 @@ Your MCP server doesn't need to know anything about Lambda, AgentCore, or Cognit
                      │         Shared Infrastructure            │
                      │         (deployed once)                  │
   MCP Client ──────► │  Cognito User Pool  (caller auth)       │
-  (Claude, agent)    │  DCR API Gateway    (.well-known, /register)
+  (ChatGPT, Claude,  │  DCR API Gateway    (.well-known, /register)
+   any MCP client)
                      │  OAuth Callback     (/oauth/callback)    │
                      │  DynamoDB tables    (DCR + OAuth state)  │
                      └───────────────┬──────────────────────────┘
@@ -172,7 +173,7 @@ import os
 
 def _framework_managed():
     """True when running inside the MCP Lambda wrapper framework."""
-    return bool(os.environ.get("MY_SERVICE_ACCESS_TOKEN") or os.environ.get("OAUTH_AUTH_URL"))
+    return bool(os.environ.get("SERVICE_NAME"))
 
 # Before any file write:
 if not _framework_managed():
@@ -311,7 +312,7 @@ aws secretsmanager create-secret \
 make gen-tools SERVICE=my-service
 ```
 
-The script finds the MCP server's project directory automatically from the `file://` path in `requirements.local.txt`. Re-run this whenever the MCP server's tool definitions change.
+The script finds the MCP server's project directory automatically from the `file://` path in `requirements.txt`. Re-run this whenever the MCP server's tool definitions change.
 
 For non-Python MCP servers (or if there's no local checkout), create `tools.json` manually.
 
@@ -345,7 +346,7 @@ make deploy-shared
 # Create a Cognito user (needed to authenticate with the gateway)
 aws cognito-idp admin-create-user \
   --user-pool-id $(aws cloudformation describe-stacks --stack-name mcp-wrappers-shared \
-    --query 'Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId622CD4B2`].OutputValue' --output text) \
+    --query 'Stacks[0].Outputs[?contains(OutputKey,`UserPoolId`)].OutputValue' --output text) \
   --username your-email@example.com \
   --user-attributes Name=email,Value=your-email@example.com Name=email_verified,Value=true \
   --temporary-password 'TempPass123!'
@@ -456,28 +457,26 @@ In practice: set up `service.env`, service secrets, and `tools.json` first (step
 When a user first interacts with a service that requires OAuth:
 
 ```
-1. Agent calls a tool
-   └─ Handler finds no credentials for this user
-   └─ Builds OAuth authorization URL (PKCE + state stored in DynamoDB)
-   └─ Injects OAUTH_AUTH_URL env var, launches subprocess
+1. Agent calls a tool (e.g., list_messages)
+   └─ Interceptor injects _cognito_sub from JWT
+   └─ Handler finds no credentials for this user in Secrets Manager
+   └─ Sets OAUTH_AUTH_URL to the auth setup page, launches subprocess
    └─ MCP server returns "not authenticated, call start_auth"
 
 2. Agent calls start_auth
    └─ MCP server reads OAUTH_AUTH_URL from env, returns it
-   └─ Agent presents URL to user: "Click here to authenticate"
+   └─ Agent presents URL to user: "Open this link to connect your account"
 
-3. User opens URL in browser
-   └─ Provider login (Microsoft, Google, etc.)
+3. User opens URL in browser → auth setup page
+   └─ Logs into Cognito (establishes identity)
+   └─ Sees available services, clicks "Connect"
+   └─ Redirects to external provider login (Microsoft, Google, etc.)
    └─ Provider redirects to /oauth/callback
-   └─ Callback Lambda:
-      a. Validates state from DynamoDB
-      b. Exchanges code for tokens (standard OAuth2)
-      c. Stores tokens in Secrets Manager under {prefix}-{service}-user-{cognito_sub}
-      d. Renders "Authentication successful" HTML page
+   └─ Callback stores tokens in Secrets Manager under {prefix}-{service}-user-{cognito_sub}
+   └─ Redirects back to auth setup page showing "Connected"
 
-4. Agent calls a tool again (new Lambda invocation)
+4. User returns to chat, tells agent to try again
    └─ Handler loads token from Secrets Manager
-   └─ Refreshes if expired (standard OAuth2 refresh grant)
    └─ Injects access token as env var
    └─ MCP server tools work normally
 ```
