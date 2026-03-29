@@ -192,6 +192,24 @@ def main():
 
     # Validate and write.
     tools = json.loads(result.stdout)
+
+    MAX_TOOLS = 30
+    if len(tools) > MAX_TOOLS:
+        print(
+            f"Error: MCP server exposes {len(tools)} tools, but AgentCore Gateway\n"
+            f"returns at most {MAX_TOOLS} per page in tools/list responses. MCP clients\n"
+            f"(Claude.ai, ChatGPT) do not paginate, so tools beyond {MAX_TOOLS} will be\n"
+            f"invisible.\n"
+            f"\n"
+            f"Reduce the MCP server to {MAX_TOOLS} tools or fewer, then re-run.\n"
+            f"\n"
+            f"Tools found ({len(tools)}):",
+            file=sys.stderr,
+        )
+        for i, t in enumerate(sorted(tools, key=lambda t: t["name"])):
+            print(f"  {i+1}. {t['name']}", file=sys.stderr)
+        sys.exit(1)
+
     out_path = os.path.join(service_dir, "tools.json")
     with open(out_path, "w") as f:
         json.dump(tools, f, indent=2)

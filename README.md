@@ -767,6 +767,14 @@ The interceptor response **must** include `"interceptorOutputVersion": "1.0"` at
 
 See [Secrets and security](#secrets-and-security) for naming conventions, IAM scoping, and deployment ordering.
 
+### 30-tool limit
+
+AgentCore Gateway paginates `tools/list` MCP responses at 30 tools per page and returns a `nextCursor` for additional pages. However, current MCP clients (Claude.ai, ChatGPT) do not follow pagination — they take the first page only. This means **only the first 30 tools (sorted alphabetically) are visible to clients.**
+
+The `gen-tools` script enforces this limit and will error if the MCP server exposes more than 30 tools. If your service needs more, reduce the tool count in the MCP server (consolidate tools, remove rarely-used ones) or split across multiple gateway targets.
+
+AgentCore also supports `searchType: SEMANTIC` which replaces the tool list with a single search tool for natural language discovery. However, current MCP clients don't use it — they expect tools to appear directly in `tools/list`.
+
 ### Diagnostic logging
 
 **TODO: Remove before production.** The interceptor, handler, and credential manager currently emit `[interceptor]` and `[mcp-wrapper]` log lines to stderr (CloudWatch) for debugging the identity propagation and credential loading flow. These should be removed or gated behind a `LOG_LEVEL` env var once field testing is complete. Files with diagnostic logging:

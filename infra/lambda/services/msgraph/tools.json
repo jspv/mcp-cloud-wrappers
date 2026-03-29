@@ -12,12 +12,8 @@
     "description": "Complete Microsoft authentication after user approval.\n\nIn Lambda mode, this is not needed \u2014 call auth_status instead.\nIn local mode, completes the device-code flow."
   },
   {
-    "name": "list_accounts",
-    "description": "List authenticated Microsoft accounts.\n\nIn Lambda mode, returns the framework-managed account info."
-  },
-  {
     "name": "list_folders",
-    "description": "List available mail folders for the authenticated account.",
+    "description": "List mail folders. Pass parent_folder_id to list subfolders (check child_folder_count to know if subfolders exist).",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -28,6 +24,10 @@
         "include_hidden": {
           "default": false,
           "type": "boolean"
+        },
+        "parent_folder_id": {
+          "type": "string",
+          "default": null
         }
       }
     }
@@ -73,21 +73,32 @@
     }
   },
   {
-    "name": "mark_message_read",
-    "description": "Mark a message as read or unread. Requires Mail.ReadWrite permission.",
+    "name": "update_message",
+    "description": "Update message properties: read/unread, follow-up flag (flagged/complete/notFlagged), or color categories.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "message_id": {
           "type": "string"
         },
-        "account_id": {
+        "is_read": {
+          "type": "boolean",
+          "default": null
+        },
+        "flag_status": {
           "type": "string",
           "default": null
         },
-        "is_read": {
-          "default": true,
-          "type": "boolean"
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "account_id": {
+          "type": "string",
+          "default": null
         }
       },
       "required": [
@@ -464,8 +475,8 @@
     }
   },
   {
-    "name": "update_draft",
-    "description": "Update a draft message. Only provided fields are changed.",
+    "name": "manage_draft",
+    "description": "Update and/or send a draft. Provide fields to update, set send=True to send.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -505,24 +516,9 @@
           "type": "string",
           "default": null
         },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "message_id"
-      ]
-    }
-  },
-  {
-    "name": "send_draft",
-    "description": "Send a previously created draft message.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "message_id": {
-          "type": "string"
+        "send": {
+          "default": false,
+          "type": "boolean"
         },
         "account_id": {
           "type": "string",
@@ -535,27 +531,8 @@
     }
   },
   {
-    "name": "list_attachments",
-    "description": "List attachment metadata for a message.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "message_id": {
-          "type": "string"
-        },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "message_id"
-      ]
-    }
-  },
-  {
-    "name": "get_attachment",
-    "description": "Download a single attachment. Returns base64 content if under 1.5 MB, metadata only if larger.",
+    "name": "get_attachments",
+    "description": "Get attachments for a message. Without attachment_id: list all metadata. With attachment_id: download that attachment (base64 if under 1.5 MB).",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -563,7 +540,8 @@
           "type": "string"
         },
         "attachment_id": {
-          "type": "string"
+          "type": "string",
+          "default": null
         },
         "account_id": {
           "type": "string",
@@ -571,8 +549,7 @@
         }
       },
       "required": [
-        "message_id",
-        "attachment_id"
+        "message_id"
       ]
     }
   },
@@ -627,74 +604,6 @@
       },
       "required": [
         "name"
-      ]
-    }
-  },
-  {
-    "name": "list_child_folders",
-    "description": "List subfolders of a given mail folder.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "folder_id": {
-          "type": "string"
-        },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "folder_id"
-      ]
-    }
-  },
-  {
-    "name": "flag_message",
-    "description": "Set follow-up flag on a message. Values: flagged, complete, notFlagged.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "message_id": {
-          "type": "string"
-        },
-        "flag_status": {
-          "type": "string"
-        },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "message_id",
-        "flag_status"
-      ]
-    }
-  },
-  {
-    "name": "categorize_message",
-    "description": "Apply color categories to a message.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "message_id": {
-          "type": "string"
-        },
-        "categories": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "message_id",
-        "categories"
       ]
     }
   },
@@ -878,42 +787,8 @@
     }
   },
   {
-    "name": "find_meeting_times",
-    "description": "Suggest available meeting times for a set of attendees.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "attendees": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "duration_minutes": {
-          "default": 60,
-          "type": "integer"
-        },
-        "start_iso": {
-          "type": "string",
-          "default": null
-        },
-        "end_iso": {
-          "type": "string",
-          "default": null
-        },
-        "account_id": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "required": [
-        "attendees"
-      ]
-    }
-  },
-  {
-    "name": "get_schedule",
-    "description": "Get free/busy schedule for one or more users.",
+    "name": "check_availability",
+    "description": "Check calendar availability. mode='free_busy': get free/busy schedule. mode='suggest': suggest meeting times.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -928,6 +803,14 @@
         },
         "end_iso": {
           "type": "string"
+        },
+        "mode": {
+          "default": "free_busy",
+          "type": "string"
+        },
+        "duration_minutes": {
+          "default": 60,
+          "type": "integer"
         },
         "account_id": {
           "type": "string",
