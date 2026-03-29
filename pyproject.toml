@@ -1,7 +1,7 @@
 [project]
-name = "mcp-lambda-wrappers"
+name = "mcp-cloud-wrappers"
 version = "0.1.0"
-description = "Reusable framework for wrapping stdio MCP services as AWS Lambda behind AgentCore Gateway"
+description = "Deploy any stdio MCP server to the cloud — accessible from ChatGPT, Claude.ai, and any MCP client on web and mobile"
 requires-python = ">=3.11"
 authors = [{ name = "jspv" }]
 dependencies = [

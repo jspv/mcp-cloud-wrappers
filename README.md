@@ -1,17 +1,27 @@
-# MCP Lambda Wrappers
+# MCP Cloud Wrappers
 
-A reusable framework for deploying most any stdio-based MCP (Model Context Protocol) server as an AWS Lambda function behind [Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html), with Cognito OAuth and Dynamic Client Registration.
+**Take any stdio MCP server and deploy it to the cloud — accessible from ChatGPT, Claude.ai, and any MCP-compatible client on web and mobile.**
 
-You bring an MCP server package (yours, open source, wherever it lives). This framework provides the infrastructure to run it serverlessly: caller authentication, dynamic client registration, per-user OAuth token lifecycle, and the Lambda subprocess bridge. You write a `ServiceConfig` (a few lines of Python) and a `requirements.txt`.
+Most MCP servers run locally — they work great with Claude Desktop or Claude Code on your machine, but they can't be used from ChatGPT, Claude.ai on the web, or mobile apps. This framework changes that. You bring an existing stdio MCP server, and this framework deploys it as a cloud-hosted MCP endpoint that any client can connect to, with full user authentication and per-user OAuth for external services.
+
+## What this does
+
+- **Any stdio MCP server** → cloud-hosted MCP endpoint with a URL
+- **Works with ChatGPT, Claude.ai, and any MCP client** — web, mobile, desktop
+- **Per-user authentication** — each user logs in via Cognito and connects their own external accounts (Microsoft, Google, etc.)
+- **Automatic OAuth management** — token exchange, refresh, per-user storage in Secrets Manager
+- **Zero MCP server changes required** for basic services; one-line change for services with per-user OAuth
+- **Add a new service in minutes** — create a directory with 3-4 config files, deploy
 
 ## How it works
 
 The framework wraps MCP servers that you develop and maintain **outside this repository**. Each MCP server is any program that speaks the MCP stdio protocol — Python packages (built with [FastMCP](https://github.com/jlowin/fastmcp), the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), etc.), Node.js servers, Go binaries, or anything else that reads/writes MCP JSON-RPC over stdin/stdout. The framework:
 
-1. Bundles your MCP server into a Lambda deployment package
-2. Launches it as a subprocess on each invocation
-3. Bridges AgentCore Gateway events to the subprocess via `mcp_lambda`
-4. Manages all authentication and credential injection automatically
+1. Bundles your MCP server into an AWS Lambda deployment package
+2. Exposes it as a cloud MCP endpoint via [Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html)
+3. Handles caller authentication (Cognito + Dynamic Client Registration)
+4. Manages per-user OAuth tokens for external services (Microsoft, Google, etc.)
+5. Provides an auth setup web page where users connect their external accounts
 
 Your MCP server doesn't need to know anything about Lambda, AgentCore, or Cognito. The only adaptation is a one-line check for a framework-injected access token environment variable (see [Preparing your MCP server](#1-prepare-your-mcp-server)).
 
@@ -72,7 +82,7 @@ Category 1 is for non-secret configuration — it lives in `service.env` alongsi
 ## Repository structure
 
 ```
-mcp-lambda-wrappers/
+mcp-cloud-wrappers/
 ├── packages/
 │   └── mcp-wrapper-runtime/             # Framework runtime (installed into each Lambda)
 │       └── src/mcp_wrapper/
