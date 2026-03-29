@@ -108,8 +108,8 @@ class McpServerLambda(Construct):
                     volumes=_docker_volumes(handler_source_dir),
                     command=[
                         "bash", "-c",
-                        "pip install /mcp-wrapper-runtime -t /asset-output && "
-                        "pip install -r requirements.txt -t /asset-output && "
+                        "pip install --no-cache-dir /mcp-wrapper-runtime -t /asset-output && "
+                        "pip install --no-cache-dir -r requirements.txt -t /asset-output && "
                         "cp -au . /asset-output",
                     ],
                 ),
