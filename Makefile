@@ -6,8 +6,11 @@ PREFIX ?= mcp-wrappers
 # Users never need to invoke it directly — use make targets instead.
 CDK = ./node_modules/.bin/cdk
 
-# Use podman if docker is not available.
-export CDK_DOCKER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+# Container engine for CDK Lambda asset bundling. Prefer docker; otherwise fall
+# back to a podman shim that adds --userns=keep-id, so rootless podman (e.g. the
+# libkrun machine provider) can write to CDK's bind-mounted, root-owned build
+# directory while the build runs as the host UID. See scripts/podman-cdk.sh.
+export CDK_DOCKER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo $(CURDIR)/scripts/podman-cdk.sh)
 
 node_modules/.bin/cdk:
 	npm install --save-dev aws-cdk
