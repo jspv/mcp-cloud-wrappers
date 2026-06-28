@@ -94,6 +94,16 @@ def _register(event):
     # such as Hermes Agent and most MCP clients use.
     auth_method = body.get("token_endpoint_auth_method", "client_secret_basic")
     is_public = auth_method == "none"
+    # Normalize to a method we actually support so the response can't claim one
+    # thing while the client was registered as another. Confidential clients map
+    # to the requested secret-based method (Cognito accepts both basic and
+    # post); anything unrecognized falls back to client_secret_basic.
+    if is_public:
+        resolved_auth_method = "none"
+    elif auth_method == "client_secret_post":
+        resolved_auth_method = "client_secret_post"
+    else:
+        resolved_auth_method = "client_secret_basic"
 
     # --- Validation ---
     if not client_name:
@@ -112,6 +122,11 @@ def _register(event):
             "error_description": "maximum 5 redirect_uris",
         })
     for uri in redirect_uris:
+        if not isinstance(uri, str):
+            return _json_response(400, {
+                "error": "invalid_client_metadata",
+                "error_description": "each redirect_uri must be a string",
+            })
         if "#" in uri:
             return _json_response(400, {
                 "error": "invalid_client_metadata",
@@ -170,7 +185,10 @@ def _register(event):
             "redirect_uris": redirect_uris,
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "none" if existing_public else "client_secret_basic",
+            "token_endpoint_auth_method": existing.get(
+                "token_endpoint_auth_method",
+                "none" if existing_public else "client_secret_basic",
+            ),
             "client_name": client_name,
         })
 
@@ -214,6 +232,7 @@ def _register(event):
         "created_at": now,
         "cognito_client_name": cognito_client_name,
         "public": is_public,
+        "token_endpoint_auth_method": resolved_auth_method,
     })
 
     return _json_response(201, {
@@ -224,7 +243,7 @@ def _register(event):
         "redirect_uris": redirect_uris,
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
-        "token_endpoint_auth_method": "none" if is_public else "client_secret_basic",
+        "token_endpoint_auth_method": resolved_auth_method,
         "client_name": client_name,
     })
 
