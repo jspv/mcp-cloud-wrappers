@@ -142,46 +142,66 @@ def _register(event):
         FilterExpression="client_name = :cn AND redirect_uris_hash = :h",
         ExpressionAttributeValues={":cn": client_name, ":h": uris_hash},
     )
-    if resp.get("Items"):
-        existing = resp["Items"][0]
+    for existing in resp.get("Items", []):
         try:
             client_info = cognito.describe_user_pool_client(
                 UserPoolId=USER_POOL_ID,
                 ClientId=existing["client_id"],
             )["UserPoolClient"]
-            existing_secret = client_info.get("ClientSecret", "")
-            # Prefer the stored flag; fall back to secret presence for rows
-            # created before this field existed.
-            existing_public = existing.get("public", not bool(existing_secret))
-            return _json_response(200, {
-                "client_id": existing["client_id"],
-                "client_secret": "" if existing_public else existing_secret,
-                "client_id_issued_at": int(existing.get("created_at", 0)),
-                "client_secret_expires_at": 0,
-                "redirect_uris": redirect_uris,
-                "grant_types": ["authorization_code", "refresh_token"],
-                "response_types": ["code"],
-                "token_endpoint_auth_method": "none" if existing_public else "client_secret_basic",
-                "client_name": client_name,
-            })
         except cognito.exceptions.ResourceNotFoundException:
-            pass
+            # Stale DynamoDB row pointing at a deleted Cognito client; skip it.
+            continue
+        existing_secret = client_info.get("ClientSecret", "")
+        # Prefer the stored flag; fall back to secret presence for rows
+        # created before this field existed.
+        existing_public = existing.get("public", not bool(existing_secret))
+        # Only reuse a client whose auth method matches the request. Otherwise
+        # a public (PKCE) re-registration could be handed back a stale
+        # confidential client + secret it never sends (or vice versa), causing
+        # an invalid_client re-auth loop. On mismatch, fall through and create a
+        # fresh client of the requested type.
+        if existing_public != is_public:
+            continue
+        return _json_response(200, {
+            "client_id": existing["client_id"],
+            "client_secret": "" if existing_public else existing_secret,
+            "client_id_issued_at": int(existing.get("created_at", 0)),
+            "client_secret_expires_at": 0,
+            "redirect_uris": redirect_uris,
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none" if existing_public else "client_secret_basic",
+            "client_name": client_name,
+        })
 
     # --- Create Cognito UserPoolClient ---
     cognito_client_name = f"dcr-{client_name}-{uris_hash}"[:128]
-    result = cognito.create_user_pool_client(
-        UserPoolId=USER_POOL_ID,
-        ClientName=cognito_client_name,
-        # Honor the requested auth method. Public clients (token_endpoint_auth_
-        # method=none) get no secret and rely on PKCE, which Cognito enforces
-        # automatically for public app clients on the code grant.
-        GenerateSecret=not is_public,
-        AllowedOAuthFlows=["code"],
-        AllowedOAuthFlowsUserPoolClient=True,
-        AllowedOAuthScopes=ALLOWED_SCOPES,
-        CallbackURLs=redirect_uris,
-        SupportedIdentityProviders=["COGNITO"],
-    )
+    try:
+        result = cognito.create_user_pool_client(
+            UserPoolId=USER_POOL_ID,
+            ClientName=cognito_client_name,
+            # Honor the requested auth method. Public clients (token_endpoint_auth_
+            # method=none) get no secret and rely on PKCE, which Cognito enforces
+            # automatically for public app clients on the code grant.
+            GenerateSecret=not is_public,
+            AllowedOAuthFlows=["code"],
+            AllowedOAuthFlowsUserPoolClient=True,
+            AllowedOAuthScopes=ALLOWED_SCOPES,
+            CallbackURLs=redirect_uris,
+            SupportedIdentityProviders=["COGNITO"],
+        )
+    except cognito.exceptions.InvalidParameterException as e:
+        # Cognito applies its own CallbackURL rules (e.g. which loopback forms
+        # and ports it accepts) on top of our validation. Surface a rejection
+        # as a clean RFC 7591 error instead of an unhandled 500. Other errors
+        # (capacity, throttling) are genuine server faults — let them propagate.
+        return _json_response(400, {
+            "error": "invalid_redirect_uri",
+            "error_description": (
+                "Cognito rejected the registration: "
+                f"{e.response['Error']['Message']}"
+            ),
+        })
     client = result["UserPoolClient"]
     now = int(time.time())
 
