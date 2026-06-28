@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import time
+from urllib.parse import urlparse
 
 import boto3
 
@@ -70,6 +71,12 @@ def _metadata_response():
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "scopes_supported": ALLOWED_SCOPES,
         "code_challenge_methods_supported": ["S256"],
+        # Advertise that public (PKCE, no secret) clients are supported, per
+        # RFC 8414. Cognito enforces PKCE automatically for public app clients
+        # on the authorization-code grant.
+        "token_endpoint_auth_methods_supported": [
+            "none", "client_secret_basic", "client_secret_post",
+        ],
     })
 
 
@@ -82,6 +89,11 @@ def _register(event):
 
     client_name = body.get("client_name", "")
     redirect_uris = body.get("redirect_uris", [])
+    # RFC 7591: default is client_secret_basic when omitted. "none" requests a
+    # public client (PKCE, no secret) — which is what native/loopback clients
+    # such as Hermes Agent and most MCP clients use.
+    auth_method = body.get("token_endpoint_auth_method", "client_secret_basic")
+    is_public = auth_method == "none"
 
     # --- Validation ---
     if not client_name:
@@ -105,10 +117,19 @@ def _register(event):
                 "error": "invalid_client_metadata",
                 "error_description": "redirect_uris must not contain fragments",
             })
-        if not uri.startswith("https://") and not uri.startswith("http://localhost"):
+        # Per RFC 8252 §7.3, native apps use a loopback redirect and the IP
+        # literal (127.0.0.1 / ::1) is RECOMMENDED over the "localhost"
+        # hostname. Allow plain http only for loopback hosts; require https
+        # otherwise.
+        parsed = urlparse(uri)
+        is_loopback = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        if not (parsed.scheme == "https" or (parsed.scheme == "http" and is_loopback)):
             return _json_response(400, {
                 "error": "invalid_client_metadata",
-                "error_description": "redirect_uris must be HTTPS (localhost exempt)",
+                "error_description": (
+                    "redirect_uris must use https, or http on a loopback host "
+                    "(localhost, 127.0.0.1, or ::1)"
+                ),
             })
 
     # --- Idempotency check ---
@@ -128,14 +149,19 @@ def _register(event):
                 UserPoolId=USER_POOL_ID,
                 ClientId=existing["client_id"],
             )["UserPoolClient"]
+            existing_secret = client_info.get("ClientSecret", "")
+            # Prefer the stored flag; fall back to secret presence for rows
+            # created before this field existed.
+            existing_public = existing.get("public", not bool(existing_secret))
             return _json_response(200, {
                 "client_id": existing["client_id"],
-                "client_secret": client_info.get("ClientSecret", ""),
+                "client_secret": "" if existing_public else existing_secret,
                 "client_id_issued_at": int(existing.get("created_at", 0)),
                 "client_secret_expires_at": 0,
                 "redirect_uris": redirect_uris,
                 "grant_types": ["authorization_code", "refresh_token"],
                 "response_types": ["code"],
+                "token_endpoint_auth_method": "none" if existing_public else "client_secret_basic",
                 "client_name": client_name,
             })
         except cognito.exceptions.ResourceNotFoundException:
@@ -146,7 +172,10 @@ def _register(event):
     result = cognito.create_user_pool_client(
         UserPoolId=USER_POOL_ID,
         ClientName=cognito_client_name,
-        GenerateSecret=True,
+        # Honor the requested auth method. Public clients (token_endpoint_auth_
+        # method=none) get no secret and rely on PKCE, which Cognito enforces
+        # automatically for public app clients on the code grant.
+        GenerateSecret=not is_public,
         AllowedOAuthFlows=["code"],
         AllowedOAuthFlowsUserPoolClient=True,
         AllowedOAuthScopes=ALLOWED_SCOPES,
@@ -164,16 +193,18 @@ def _register(event):
         "redirect_uris_hash": uris_hash,
         "created_at": now,
         "cognito_client_name": cognito_client_name,
+        "public": is_public,
     })
 
     return _json_response(201, {
         "client_id": client["ClientId"],
-        "client_secret": client.get("ClientSecret", ""),
+        "client_secret": "" if is_public else client.get("ClientSecret", ""),
         "client_id_issued_at": now,
         "client_secret_expires_at": 0,
         "redirect_uris": redirect_uris,
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
+        "token_endpoint_auth_method": "none" if is_public else "client_secret_basic",
         "client_name": client_name,
     })
 
